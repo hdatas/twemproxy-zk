@@ -19,6 +19,7 @@
 #include <nc_conf.h>
 #include <nc_server.h>
 #include <proto/nc_proto.h>
+#include "parson/parson.h"
 
 #define DEFINE_ACTION(_hash, _name) string(#_name),
 static struct string hash_strings[] = {
@@ -40,6 +41,9 @@ static struct string dist_strings[] = {
     null_string
 };
 #undef DEFINE_ACTION
+
+static rstatus_t string_to_conf_server(const uint8_t* saddr, struct conf_server* srv);
+static rstatus_t conf_shard_each_server_shard(struct conf_shard* cs, struct array* shards);
 
 static struct command conf_commands[] = {
     { string("listen"),
@@ -137,6 +141,14 @@ conf_server_deinit(struct conf_server *cs)
     string_deinit(&cs->addrstr);
     cs->valid = 0;
     log_debug(LOG_VVERB, "deinit conf server %p", cs);
+}
+
+static void
+conf_shard_deinit(struct conf_shard *cs) {
+    conf_server_deinit(&cs->master);
+    while (array_n(&cs->slaves) != 0) {
+      conf_server_deinit(array_pop(&cs->slaves));
+    }
 }
 
 rstatus_t
@@ -244,6 +256,16 @@ conf_pool_deinit(struct conf_pool *cp)
     }
     array_deinit(&cp->server);
 
+    while (array_n(&cp->proxies) != 0) {
+        string_deinit(array_pop(&cp->proxies));
+    }
+    array_deinit(&cp->proxies);
+
+    while (array_n(&cp->shards) != 0) {
+        conf_shard_deinit(array_pop(&cp->shards));
+    }
+    array_deinit(&cp->shards);
+
     log_debug(LOG_VVERB, "deinit conf pool %p", cp);
 }
 
@@ -311,6 +333,16 @@ conf_pool_each_transform(void *elem, void *data)
     log_debug(LOG_VERB, "transform to pool %"PRIu32" '%.*s'", sp->idx,
               sp->name.len, sp->name.data);
 
+    // Populate server shards from conf-shards.
+    array_null(&sp->shards);
+    status = array_each(&cp->shards, conf_shard_each_server_shard, &sp->shards);
+    for (uint32_t i = 0; i < array_n(&sp->shards); i++) {
+      struct shard* s = (struct shard*) array_get(&sp->shards, i);
+      // Shard owner is the enclosing server_pool.
+      s->owner = sp;
+    }
+
+    // Populate master / slaves in server-shards.
     return NC_OK;
 }
 
@@ -768,6 +800,7 @@ conf_open(char *filename)
         fclose(fh);
         return NULL;
     }
+    memset(cf, 0, sizeof(*cf));
 
     status = array_init(&cf->arg, CONF_DEFAULT_ARGS, sizeof(struct string));
     if (status != NC_OK) {
@@ -1406,7 +1439,9 @@ conf_destroy(struct conf *cf)
     }
     array_deinit(&cf->arg);
 
+    int i = 0;
     while (array_n(&cf->pool) != 0) {
+        log_debug(LOG_NOTICE, "deinit conf pool %d", i++);
         conf_pool_deinit(array_pop(&cf->pool));
     }
     array_deinit(&cf->pool);
@@ -1808,4 +1843,305 @@ conf_set_hashtag(struct conf *cf, struct command *cmd, void *conf)
     }
 
     return CONF_OK;
+}
+
+// Validate json config file format.
+static rstatus_t
+conf_json_pre_validate(struct conf *cf)
+{
+    //struct conf_server srv;
+    //string_to_conf_server("192.168.1.64:23434", &srv);
+    JSON_Value *root_value = json_parse_file_with_comments(cf->fname);
+    if (!root_value) {
+        log_stderr("configuration file '%s' invalid JSON syntax\n",
+                   cf->fname);
+        return NC_ERROR;
+    }
+
+
+    return NC_OK;
+}
+
+// Validate conf file contents.
+static rstatus_t
+conf_json_post_validate(struct conf *cf)
+{
+    return NC_OK;
+}
+
+// Input Json "obj" represents a pool.
+//
+// Mandatory pool fields:
+//      "name": pool name
+//      "shard_range": key hash value range in this shard, [low, high)
+//      "shards" : a list of shards.
+static rstatus_t
+conf_json_init_pool(JSON_Object* obj, struct conf_pool* pool)
+{
+    rstatus_t status;
+    struct string plname;
+
+    // TODO: verify "proxies", "shard_range", "shards", "master", "slaves" exists.
+    //
+    // init pool name.
+    string_init(&plname);
+    const char* name = json_object_get_string(obj, "name");
+    status = string_copy(&plname, (uint8_t*)name, (uint32_t)strlen(name));
+    if (status != NC_OK) {
+      return status;
+    }
+
+    // Init the pool to default value.
+    conf_pool_init(pool, &plname);
+    string_deinit(&plname);
+
+    // Init the list of proxies.
+    status = array_init(&pool->proxies, CONF_DEFAULT_PROXIES,
+                        sizeof(struct conf_server));
+
+    JSON_Array*  jproxies = json_object_get_array(obj, "proxy");
+    ASSERT(jproxies != NULL);
+    size_t nproxies = json_array_get_count(jproxies);
+    ASSERT(nproxies > 0);
+    for (size_t i = 0; i < nproxies; i++) {
+        const char* p = json_array_get_string(jproxies, i);
+        struct conf_server* cp = (struct conf_server*) array_push(&pool->proxies);
+        string_to_conf_server((const uint8_t*) p, cp);
+    }
+
+
+    // hash value range: [min, max)
+    JSON_Array * hv_range = json_object_get_array(obj, "shard_range");
+    ASSERT(hv_range != NULL);
+    ASSERT(json_array_get_count(hv_range) == 2);
+    pool->shard_range_min = (uint32_t)json_array_get_number(hv_range, 0);
+    pool->shard_range_max = (uint32_t)json_array_get_number(hv_range, 1);
+    ASSERT(pool->shard_range_min < pool->shard_range_max);
+
+    // Init shards.
+    status = array_init(&pool->shards, CONF_DEFAULT_SHARDS,
+                        sizeof(struct conf_shard));
+    JSON_Array* jshards = json_object_get_array(obj, "shards");
+    size_t nshards = json_array_get_count(jshards);
+    ASSERT(nshards > 0);
+
+    for (size_t i = 0; i < nshards; i++) {
+        // Add a shard into pool.
+        struct conf_shard* cfshard = (struct conf_shard*) array_push(&pool->shards);
+        if (cfshard == NULL) {
+            status = NC_ENOMEM;
+            break;
+        }
+
+        JSON_Object* js = json_array_get_object(jshards, i);
+        cfshard->range_begin = (uint32_t)json_object_get_number(js, "range_start");
+        cfshard->range_end = (uint32_t)json_object_get_number(js, "range_end");
+
+        // Add master / slave conf_servers in each conf_shard.
+        const char* jsmaster = json_object_get_string(js, "master");
+        string_to_conf_server((const uint8_t*)jsmaster, &cfshard->master);
+
+        JSON_Array* jsslaves = json_object_get_array(js, "slave");
+        size_t nslaves = json_array_get_count(jsslaves);
+        ASSERT(nslaves > 0);
+        status = array_init(&cfshard->slaves, CONF_DEFAULT_SLAVES,
+                            sizeof(struct conf_server));
+
+        for (size_t s = 0; s < nslaves; s++) {
+          const char* slvstr = json_array_get_string(jsslaves, s);
+          struct conf_server* slv = array_push(&cfshard->slaves);
+          string_to_conf_server((const uint8_t*)slvstr, slv);
+          //struct string* slv = (struct string*) array_push(&cfshard->slaves);
+          //string_init(slv);
+          //string_copy(slv, (uint8_t*)slvstr, (uint32_t)strlen(slvstr));
+        }
+    }
+
+    // Other misc fields.
+    pool->hash = HASH_FNV1_64;
+    pool->redis = 1;
+    pool->redis_db = 0;
+    pool->tcpkeepalive = 1;
+    pool->preconnect  =1;
+
+    pool->auto_eject_hosts = 0;
+    pool->server_connections = 1;
+    pool->server_retry_timeout = 10000;
+    pool->server_failure_limit = 2;
+
+    return NC_OK;
+}
+
+static rstatus_t
+conf_json_parse(struct conf *cf)
+{
+    rstatus_t status;
+
+    //ASSERT(cf->sound && !cf->parsed);
+    //ASSERT(array_n(&cf->arg) == 0);
+
+    JSON_Value *root_value = json_parse_file_with_comments(cf->fname);
+    ASSERT(root_value != NULL);
+
+    // Top level is a JSON object.
+    // Mandatory fields:
+    //      "pools": a list of pools.
+    JSON_Object* root_obj = json_value_get_object(root_value);
+    JSON_Array* pools = json_object_get_array(root_obj, "pools");
+    size_t num_pools = json_array_get_count(pools);
+
+    log_debug(LOG_INFO, "conf %s contains %d pools\n", cf->fname,  num_pools);
+
+    for (size_t i = 0; i < num_pools; i++) {
+        struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
+        if (pool == NULL) {
+            status = NC_ENOMEM;
+            break;
+        }
+
+        JSON_Object* pool_obj = json_array_get_object(pools, i);
+
+        status = conf_json_init_pool(pool_obj, pool);
+        pool->valid = 1;
+    }
+
+    return status;
+}
+
+static void
+conf_json_dump(struct conf *cf)
+{
+    uint32_t npool = array_n(&cf->pool);
+    log_debug(LOG_NOTICE, "conf %s: have %d pools, valid = %d\n",
+              cf->fname, npool, cf->valid);
+    for (uint32_t i = 0; i < npool; i++) {
+        log_debug(LOG_NOTICE, "pool %d ::", i);
+
+        struct conf_pool* pool = (struct conf_pool*) array_get(&cf->pool, i);
+
+        uint32_t nproxies = array_n(&pool->proxies);
+        uint32_t nshards = array_n(&pool->shards);
+
+        log_debug(LOG_NOTICE, "\tpool name : \"%s\"", pool->name.data);
+        log_debug(LOG_NOTICE, "\t%d proxies", nproxies);
+        log_debug(LOG_NOTICE, "\t%d shards", nshards);
+        log_debug(LOG_NOTICE, "\tshard range : [%d, %d]",
+                  pool->shard_range_min, pool->shard_range_max);
+
+        for (uint32_t j = 0; j < nproxies; j++) {
+            struct conf_server* p = (struct conf_server*) array_get(&pool->proxies, j);
+            log_debug(LOG_NOTICE, "\tproxy %d : %s", j, p->pname.data);
+        }
+
+        for (uint32_t j = 0; j < nshards; j++) {
+            struct conf_shard* sh = (struct conf_shard*) array_get(&pool->shards, j);
+            uint32_t nslaves = array_n(&sh->slaves);
+
+            log_debug(LOG_NOTICE, "\tshard %d : range [%d, %d], 1 master, %d slaves",
+                      j, sh->range_begin, sh->range_end, nslaves);
+            // master is a conf_server
+            log_debug(LOG_NOTICE, "\t\tmaster : %s", sh->master.pname.data);
+
+            // "slaves" is conf_server[].
+            for (uint32_t k = 0; k < nslaves; k++) {
+                struct conf_server* s = (struct conf_server*) array_get(&sh->slaves, k);
+                log_debug(LOG_NOTICE, "\t\tslave %d : %s", k, s->pname.data);
+            }
+        }
+    }
+    log_debug(LOG_NOTICE, "\n");
+
+}
+
+struct conf *
+conf_json_create(char *filename)
+{
+    rstatus_t status;
+    struct conf *cf;
+
+    cf = conf_open(filename);
+    if (cf == NULL) {
+        return NULL;
+    }
+    // We don't need file-handle.
+    fclose(cf->fh);
+    cf->fh = NULL;
+
+    // Validate conf file format correctness.
+    status = conf_json_pre_validate(cf);
+    if (status != NC_OK) {
+      goto error;
+
+    }
+
+    // Parse conf file.
+    status = conf_json_parse(cf);
+    if (status != NC_OK) {
+        goto error;
+    }
+
+    // validate parsed configuration
+    status = conf_json_post_validate(cf);
+    if (status != NC_OK) {
+        goto error;
+    }
+
+    cf->valid = 1;
+    conf_json_dump(cf);
+
+    return cf;
+
+error:
+    log_stderr("nutcracker: configuration file '%s' JSON syntax invalid",
+               filename);
+    conf_destroy(cf);
+    return NULL;
+}
+
+static rstatus_t
+conf_shard_each_server_shard(struct conf_shard* cs, struct array* shards)
+{
+    struct shard* shard = array_push(shards);
+    ASSERT(shard != NULL);
+
+    shard->idx = array_idx(shards, shard);
+    shard->range_begin = cs->range_begin;
+    shard->range_end = cs->range_end;
+
+    // get shard's master / slaves network address.
+
+
+    return NC_OK;
+
+}
+
+// Convert an address string "hostname:port" to a conf_server.
+static rstatus_t
+string_to_conf_server(const uint8_t* saddr, struct conf_server* srv)
+{
+    conf_server_init(srv);
+    uint32_t len = (uint32_t)strlen((const char*)saddr);
+    const uint8_t *s_name, *s_port;
+
+    uint8_t *delim = nc_strchr((uint8_t*)saddr,
+                               (uint8_t*) (saddr + len),
+                               ':');
+    ASSERT(delim != NULL);
+    s_name = saddr;
+    s_port = delim + 1;
+
+    string_copy(&srv->pname, saddr, len);  // hostname:port
+    string_copy(&srv->name, saddr, len);   // hostname:port
+    string_copy(&srv->addrstr, saddr, (uint32_t)(delim - s_name));  // hostname only.
+
+    srv->port = nc_atoi(s_port, (uint32_t)(len - (delim + 1 - s_name)));
+
+    rstatus_t status = nc_resolve(&srv->addrstr, srv->port, &srv->info);
+    if (status != NC_OK) {
+        return NC_ERROR;
+    }
+
+    srv->valid = 1;
+
+    return NC_OK;
 }

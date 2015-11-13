@@ -123,7 +123,7 @@ struct context {
     struct conf        *cf;         /* configuration */
     struct stats       *stats;      /* stats */
 
-    struct array       pool;        /* server_pool[] */
+    //struct array       pool;        /* server_pool[] */
     struct event_base  *evb;        /* event base */
     int                max_timeout; /* max timeout in msec */
     int                timeout;     /* timeout in msec */
@@ -131,6 +131,9 @@ struct context {
     uint32_t           max_nfd;     /* max # files */
     uint32_t           max_ncconn;  /* max # client connections */
     uint32_t           max_nsconn;  /* max # server connections */
+
+    struct conf        *json_cf;    // configuration in json format
+    struct array       pool;        // server_pool[] with shards
 };
 
 

@@ -84,6 +84,19 @@ struct server {
     uint32_t           failure_count; /* # consecutive failures */
 };
 
+// A shard is a logical partition of key space.
+// A shard has one master copy and N slave copies.
+struct shard {
+    uint32_t            idx;
+    struct server_pool  *owner;         // a shard belongs to a pool
+
+    uint32_t            range_begin;    // lower bound of hash key value (inclusive)
+    uint32_t            range_end;      // higher bound of hash key value (inclusive)
+
+    struct server       master;         // master server
+    struct array        slaves;         // array of slave servers
+};
+
 struct server_pool {
     uint32_t           idx;                  /* pool index */
     struct context     *ctx;                 /* owner context */
@@ -121,6 +134,10 @@ struct server_pool {
     unsigned           preconnect:1;         /* preconnect? */
     unsigned           redis:1;              /* redis? */
     unsigned           tcpkeepalive:1;       /* tcpkeepalive? */
+
+    uint32_t           shard_range_min;      // [min ~ max] value of key hash, inclusive.
+    uint32_t           shard_range_max;
+    struct array       shards;               // shard[] in this pool
 };
 
 void server_ref(struct conn *conn, void *owner);

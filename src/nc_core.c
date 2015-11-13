@@ -73,8 +73,11 @@ core_ctx_create(struct instance *nci)
         return NULL;
     }
 
+    ctx->json_cf = conf_json_create("./conf/conf.json");
+
     /* initialize server pool from configuration */
-    status = server_pool_init(&ctx->pool, &ctx->cf->pool, ctx);
+    //status = server_pool_init(&ctx->pool, &ctx->cf->pool, ctx);
+    status = server_pool_init(&ctx->pool, &ctx->json_cf->pool, ctx);
     if (status != NC_OK) {
         conf_destroy(ctx->cf);
         nc_free(ctx);
@@ -152,6 +155,7 @@ core_ctx_destroy(struct context *ctx)
     stats_destroy(ctx->stats);
     server_pool_deinit(&ctx->pool);
     conf_destroy(ctx->cf);
+    conf_destroy(ctx->json_cf);
     nc_free(ctx);
 }
 

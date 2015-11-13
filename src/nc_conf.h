@@ -32,9 +32,12 @@
 #define CONF_ROOT_DEPTH     1
 #define CONF_MAX_DEPTH      CONF_ROOT_DEPTH + 1
 
-#define CONF_DEFAULT_ARGS       3
-#define CONF_DEFAULT_POOL       8
-#define CONF_DEFAULT_SERVERS    8
+#define CONF_DEFAULT_ARGS           3
+#define CONF_DEFAULT_POOL           8
+#define CONF_DEFAULT_SERVERS        8
+#define CONF_DEFAULT_PROXIES        8       // a pool defaults to having 8 proxies
+#define CONF_DEFAULT_SHARDS         8       // a pool defaults to 8 shards
+#define CONF_DEFAULT_SLAVES         2       // a shard defaults to 1 master and 2 slaves
 
 #define CONF_UNSET_NUM  -1
 #define CONF_UNSET_PTR  NULL
@@ -75,6 +78,15 @@ struct conf_server {
     unsigned        valid:1;    /* valid? */
 };
 
+// A shard, which represents a partition of data space.
+struct conf_shard {
+    uint32_t range_begin;       // min hash value of keys in this shard (inclusive)
+    uint32_t range_end;         // max hash value of keys in this shard (inclusive)
+
+    struct conf_server master;  // conf_server of master
+    struct array  slaves;       // conf_server[] of all slaves
+};
+
 struct conf_pool {
     struct string      name;                  /* pool name (root node) */
     struct conf_listen listen;                /* listen: */
@@ -91,10 +103,15 @@ struct conf_pool {
     int                preconnect;            /* preconnect: */
     int                auto_eject_hosts;      /* auto_eject_hosts: */
     int                server_connections;    /* server_connections: */
-    int                server_retry_timeout;  /* server_retry_timeout: in msec */
-    int                server_failure_limit;  /* server_failure_limit: */
+    uint32_t server_retry_timeout;  /* server_retry_timeout: in msec */
+    uint32_t server_failure_limit;  /* server_failure_limit: */
     struct array       server;                /* servers: conf_server[] */
     unsigned           valid:1;               /* valid? */
+
+    uint32_t shard_range_min;  // key hash code lower bound (inclusive)
+    uint32_t shard_range_max;  // key hash code upper bound (inclusive)
+    struct array proxies;      // conf_server[] of proxies.
+    struct array shards;       // conf_shard[] of all shards in this pool
 };
 
 struct conf {
@@ -136,6 +153,9 @@ rstatus_t conf_server_each_transform(void *elem, void *data);
 rstatus_t conf_pool_each_transform(void *elem, void *data);
 
 struct conf *conf_create(char *filename);
+// Create conf from a file in json format.
+struct conf *conf_json_create(char *filename);
 void conf_destroy(struct conf *cf);
+
 
 #endif

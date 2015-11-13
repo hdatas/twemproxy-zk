@@ -1,0 +1,56 @@
+{
+  "pools":  // a list of pools.
+  [
+  // A pool
+  {
+    "name" : "pool1",  // pool name. ** Mandatory.
+    "proxy" : ["192.168.1.38:21000", "192.168.1.38:21001"], // proxies that connect to this pool. optional.
+    "hash" : "fnv1a_64",  // ** mandatory
+    "redis" : true,  // ** mandatory
+    "server_retry_timeout": 2000,
+    "server_failure_limit": 1,
+    "shard_range": [0, 100000],  // begin/end range of a shard, inclusive.
+    "shards" : [  // each pool has a list of shards. Each shard has a master and N slaves.
+      {
+        "range_start" : 0,
+        "range_end" : 9998,
+        "master" :  "localhost:30001",
+        "slave" : [ "localhost:30003"]
+      },
+      {
+        "range_start" : 9999,
+        "range_end" : 100000,
+        "master" :  "localhost:31000",
+        "slave" : [ "localhost:31001",  "localhost:30004"]
+      }
+    ]
+  },
+
+  // Another pool.
+  {
+    "name" : "pool2",
+    "proxy" : ["192.168.1.47:22000"], // proxies that connect to this pool. optional.
+    "hash": "fnv1a_64",
+    "redis": true,
+    "server_retry_timeout": 2000,
+    "server_failure_limit": 1,
+    "shard_range": [0, 100000],  // begin/end range of a shard, inclusive.
+    "shards" : [
+      {
+        "range_start" : 0,
+        "range_end" : 9998,
+        "master" :  "localhost:30010",
+        "slave" : [ "localhost:30002",  "localhost:30003"]
+      },
+      {
+        "range_start" : 9999,
+        "range_end" : 99999,
+        "master" :  "localhost:30011",
+        "slave" : [ "localhost:30003",  "localhost:30004"]
+      }
+    ]
+  }
+  ],
+
+  "author" : "shawn"
+}
