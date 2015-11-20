@@ -42,8 +42,13 @@ static struct string dist_strings[] = {
 };
 #undef DEFINE_ACTION
 
-static rstatus_t string_to_conf_server(const uint8_t* saddr, struct conf_server* srv);
-static rstatus_t conf_shard_each_server_shard(struct conf_shard* cs, struct array* shards);
+static void conf_server_to_conf_listen(struct conf_server* cs,
+                                       struct conf_listen* cl);
+static rstatus_t string_to_conf_server(const uint8_t* saddr,
+                                       struct conf_server* srv);
+static rstatus_t conf_shards_to_server_shards(struct array* cf_shards,
+                                              struct array* srv_shards,
+                                              struct server_pool* sp);
 
 static struct command conf_commands[] = {
     { string("listen"),
@@ -149,6 +154,7 @@ conf_shard_deinit(struct conf_shard *cs) {
     while (array_n(&cs->slaves) != 0) {
       conf_server_deinit(array_pop(&cs->slaves));
     }
+    array_deinit(&cs->slaves);
 }
 
 rstatus_t
@@ -257,7 +263,8 @@ conf_pool_deinit(struct conf_pool *cp)
     array_deinit(&cp->server);
 
     while (array_n(&cp->proxies) != 0) {
-        string_deinit(array_pop(&cp->proxies));
+        //string_deinit(array_pop(&cp->proxies));
+        conf_server_deinit(array_pop(&cp->proxies));
     }
     array_deinit(&cp->proxies);
 
@@ -325,24 +332,46 @@ conf_pool_each_transform(void *elem, void *data)
     sp->auto_eject_hosts = cp->auto_eject_hosts ? 1 : 0;
     sp->preconnect = cp->preconnect ? 1 : 0;
 
-    status = server_init(&sp->server, &cp->server, sp);
+    // Init sp->server[] and server_shards in "conf_shards_to_server_shards".
+
+    /*status = server_init(&sp->server, &cp->server, sp);
     if (status != NC_OK) {
         return status;
-    }
+    }*/
 
     log_debug(LOG_VERB, "transform to pool %"PRIu32" '%.*s'", sp->idx,
               sp->name.len, sp->name.data);
 
-    // Populate server shards from conf-shards.
-    array_null(&sp->shards);
-    status = array_each(&cp->shards, conf_shard_each_server_shard, &sp->shards);
-    for (uint32_t i = 0; i < array_n(&sp->shards); i++) {
-      struct shard* s = (struct shard*) array_get(&sp->shards, i);
-      // Shard owner is the enclosing server_pool.
-      s->owner = sp;
+    // Populate server shards (and servers per shard) from conf-shards.
+    log_debug(LOG_NOTICE, "init shards at pool %d (\"%s\")", sp->idx, sp->name.data);
+    array_init(&sp->shards, array_n(&cp->shards), sizeof(struct shard));
+    //status = array_each(&cp->shards, conf_shard_each_server_shard, &sp->shards);
+    status = conf_shards_to_server_shards(&cp->shards, &sp->shards, sp);
+    if (status != NC_OK) {
+        return status;
     }
 
-    // Populate master / slaves in server-shards.
+    struct shard* srv_sd = NULL;
+    struct server* srv = NULL;
+    for (uint32_t i = 0; i < array_n(&sp->shards); i++) {
+        srv_sd = (struct shard*) array_get(&sp->shards, i);
+        log_debug(LOG_NOTICE, "shard %d [%d ~ %d]",
+                  srv_sd->idx, srv_sd->range_begin, srv_sd->range_end);
+
+        srv = srv_sd->master;
+        log_debug(LOG_NOTICE, "\tmaster srv (idx %d): %s",
+                  srv->idx, srv->pname.data);
+        ASSERT(srv->owner_shard == srv_sd);
+
+        for (uint32_t j = 0; j < array_n(&srv_sd->slaves); j++) {
+            struct server** ppsrv = (struct server**)(array_get(&srv_sd->slaves, j));
+            srv = *ppsrv;
+            log_debug(LOG_NOTICE, "\tslave srv (idx %d): %s",
+                      srv->idx, srv->pname.data);
+            ASSERT(srv->owner_shard == srv_sd);
+        }
+    }
+
     return NC_OK;
 }
 
@@ -1862,10 +1891,27 @@ conf_json_pre_validate(struct conf *cf)
     return NC_OK;
 }
 
-// Validate conf file contents.
+// Validate conf contents after conf-file is loaded.
 static rstatus_t
 conf_json_post_validate(struct conf *cf)
 {
+  uint32_t npools = array_n(&cf->pool);
+
+  for (uint32_t i = 0; i < npools; i++) {
+    struct conf_pool* pool = array_get(&cf->pool, i);
+
+    // Init some misc fields.
+    pool->hash = HASH_FNV1_64;
+    pool->redis = 1;
+    pool->redis_db = 0;
+    pool->tcpkeepalive = 1;
+    pool->preconnect  =1;
+
+    pool->auto_eject_hosts = 0;
+    pool->server_connections = 1;
+    pool->server_retry_timeout = 10000;
+    pool->server_failure_limit = 2;
+  }
     return NC_OK;
 }
 
@@ -1876,7 +1922,9 @@ conf_json_post_validate(struct conf *cf)
 //      "shard_range": key hash value range in this shard, [low, high)
 //      "shards" : a list of shards.
 static rstatus_t
-conf_json_init_pool(JSON_Object* obj, struct conf_pool* pool)
+conf_json_init_pool(JSON_Object* obj,
+                    struct conf_pool* pool,
+                    char *proxy_addr)
 {
     rstatus_t status;
     struct string plname;
@@ -1905,12 +1953,32 @@ conf_json_init_pool(JSON_Object* obj, struct conf_pool* pool)
     ASSERT(nproxies > 0);
     for (size_t i = 0; i < nproxies; i++) {
         const char* p = json_array_get_string(jproxies, i);
+        if (proxy_addr) {
+            if ((strlen(proxy_addr) != strlen(p)) ||
+                (strncmp(proxy_addr, p, strlen(proxy_addr)) != 0)) {
+                continue;
+            }
+        }
         struct conf_server* cp = (struct conf_server*) array_push(&pool->proxies);
         string_to_conf_server((const uint8_t*) p, cp);
+        break;
     }
 
+    // Skip a pool if it isn't covered by the specified "porxy_addr".
+    if (array_n(&pool->proxies) == 0) {
+        log_debug(LOG_NOTICE, "skip pool \"%s\"", name);
 
-    // hash value range: [min, max)
+        //conf_server_deinit(array_pop(&pool->proxies));
+        array_deinit(&pool->proxies);
+        string_deinit(&pool->name);
+        return NC_ERROR;
+    } else {
+        // init the "listen" address, which is proxy.
+        conf_server_to_conf_listen(array_get(&pool->proxies, 0),
+                                   &pool->listen);
+    }
+
+    // hash value range: [min, max]
     JSON_Array * hv_range = json_object_get_array(obj, "shard_range");
     ASSERT(hv_range != NULL);
     ASSERT(json_array_get_count(hv_range) == 2);
@@ -1957,23 +2025,11 @@ conf_json_init_pool(JSON_Object* obj, struct conf_pool* pool)
         }
     }
 
-    // Other misc fields.
-    pool->hash = HASH_FNV1_64;
-    pool->redis = 1;
-    pool->redis_db = 0;
-    pool->tcpkeepalive = 1;
-    pool->preconnect  =1;
-
-    pool->auto_eject_hosts = 0;
-    pool->server_connections = 1;
-    pool->server_retry_timeout = 10000;
-    pool->server_failure_limit = 2;
-
     return NC_OK;
 }
 
 static rstatus_t
-conf_json_parse(struct conf *cf)
+conf_json_parse(struct conf *cf, struct instance *nci)
 {
     rstatus_t status;
 
@@ -1992,6 +2048,9 @@ conf_json_parse(struct conf *cf)
 
     log_debug(LOG_INFO, "conf %s contains %d pools\n", cf->fname,  num_pools);
 
+    char proxy_addr[200];
+    sprintf(proxy_addr, "%s:%d", nci->proxy_ip, nci->proxy_port);
+
     for (size_t i = 0; i < num_pools; i++) {
         struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
         if (pool == NULL) {
@@ -2001,9 +2060,14 @@ conf_json_parse(struct conf *cf)
 
         JSON_Object* pool_obj = json_array_get_object(pools, i);
 
-        status = conf_json_init_pool(pool_obj, pool);
+        status = conf_json_init_pool(pool_obj, pool, proxy_addr);
+        if (status != NC_OK) {
+            array_pop(&cf->pool);
+            continue;
+        }
         pool->valid = 1;
     }
+    status = NC_OK;
 
     return status;
 }
@@ -2023,7 +2087,8 @@ conf_json_dump(struct conf *cf)
         uint32_t nshards = array_n(&pool->shards);
 
         log_debug(LOG_NOTICE, "\tpool name : \"%s\"", pool->name.data);
-        log_debug(LOG_NOTICE, "\t%d proxies", nproxies);
+        log_debug(LOG_NOTICE, "\t%d proxies, listen: %s",
+                  nproxies, pool->listen.name.data);
         log_debug(LOG_NOTICE, "\t%d shards", nshards);
         log_debug(LOG_NOTICE, "\tshard range : [%d, %d]",
                   pool->shard_range_min, pool->shard_range_max);
@@ -2053,10 +2118,11 @@ conf_json_dump(struct conf *cf)
 
 }
 
+
 struct conf *
-conf_json_create(char *filename)
+conf_json_create(char *filename, struct instance* nci)
 {
-    rstatus_t status;
+    rstatus_t status = NC_OK;
     struct conf *cf;
 
     cf = conf_open(filename);
@@ -2066,6 +2132,7 @@ conf_json_create(char *filename)
     // We don't need file-handle.
     fclose(cf->fh);
     cf->fh = NULL;
+    array_null(&cf->arg);
 
     // Validate conf file format correctness.
     status = conf_json_pre_validate(cf);
@@ -2075,7 +2142,7 @@ conf_json_create(char *filename)
     }
 
     // Parse conf file.
-    status = conf_json_parse(cf);
+    status = conf_json_parse(cf, nci);
     if (status != NC_OK) {
         goto error;
     }
@@ -2098,9 +2165,34 @@ error:
     return NULL;
 }
 
+
+/*
+static void
+init_server_from_confserver(struct server* s, struct conf_server* cfsrv)
+{
+    s->pname = cfsrv->pname;
+    s->addrstr = cfsrv->addrstr;
+    s->port = (uint16_t)cfsrv->port;
+    s->weight = 0;    // we don't need weight.
+
+    nc_memcpy(&s->info, &cfsrv->info, sizeof(cfsrv->info));
+
+    s->ns_conn_q = 0;
+    TAILQ_INIT(&s->s_conn_q);
+
+    s->next_retry = 0LL;
+    s->failure_count = 0;
+}
+*/
+
+// This method is obsolete.
+/*
 static rstatus_t
 conf_shard_each_server_shard(struct conf_shard* cs, struct array* shards)
 {
+    uint32_t nslaves = array_n(&cs->slaves);
+    ASSERT(nslaves > 0);
+
     struct shard* shard = array_push(shards);
     ASSERT(shard != NULL);
 
@@ -2108,12 +2200,32 @@ conf_shard_each_server_shard(struct conf_shard* cs, struct array* shards)
     shard->range_begin = cs->range_begin;
     shard->range_end = cs->range_end;
 
-    // get shard's master / slaves network address.
+    // get shard's master.
+    struct conf_server* cfsrv = &cs->master;
+    struct server* s = shard->master;
 
+    s->idx = 0;
+    s->owner = shard;   // server is owned by shard.
+    init_server_from_confserver(s, cfsrv);
 
+    log_debug(LOG_NOTICE, "shard %d: init master server '%.*s'",
+              shard->idx, s->pname.len, s->pname.data);
+
+    // init slaves for this shard.
+    array_init(&shard->slaves, nslaves, sizeof(struct server));
+    for (uint32_t i = 0; i < array_n(&cs->slaves); i++) {
+        cfsrv = (struct conf_server*) array_get(&cs->slaves, i);
+        s = *((struct server**)array_push(&shard->slaves));
+        s->idx = i;
+        // a server is owned by enclosing shard.
+        s->owner = shard;
+        init_server_from_confserver(s, cfsrv);
+        log_debug(LOG_NOTICE, "shard %d: init slave server %d '%.*s'",
+                  shard->idx, s->idx, s->pname.len, s->pname.data);
+    }
     return NC_OK;
-
 }
+*/
 
 // Convert an address string "hostname:port" to a conf_server.
 static rstatus_t
@@ -2144,4 +2256,72 @@ string_to_conf_server(const uint8_t* saddr, struct conf_server* srv)
     srv->valid = 1;
 
     return NC_OK;
+}
+
+static void
+conf_server_to_conf_listen(struct conf_server* cs, struct conf_listen* cl)
+{
+    string_init(&cl->name);
+    string_duplicate(&cl->name, &cs->name);
+    cl->port = cs->port;
+    nc_memcpy(&cl->info, &cs->info, sizeof(cl->info));
+    cl->valid = 1;
+}
+
+// Init server pools from info at conf_shards.
+//
+// server_pool* is the owner pool for these servers.
+static rstatus_t
+conf_shards_to_server_shards(struct array* cf_shards,
+                             struct array* srv_shards,
+                             struct server_pool* sp)
+{
+    struct conf_shard* conf_sd = NULL;
+    struct conf_server* conf_srv = NULL;
+    struct shard* srv_sd = NULL;
+    struct server* srv = NULL;
+    rstatus_t rv = NC_OK;
+
+    array_init(&sp->server, 16, sizeof(struct server));
+
+    for (uint32_t i = 0; i < array_n(cf_shards); i++) {
+        conf_sd = array_get(cf_shards, i);
+        conf_srv = &conf_sd->master;
+
+        srv_sd = array_push(srv_shards);
+
+        // "shard" is owned by server-pool
+        srv_sd->owner = sp;
+
+        srv_sd->idx = array_idx(srv_shards, srv_sd);
+        srv_sd->range_begin = conf_sd->range_begin;
+        srv_sd->range_end = conf_sd->range_end;
+
+        // Add a the shard's master server to pool's server[]
+        rv = conf_server_each_transform((void*)conf_srv, (void*)&sp->server);
+        ASSERT(rv == NC_OK);
+        srv = array_get(&sp->server, array_n(&sp->server) - 1);
+        srv->owner = sp;
+        srv->owner_shard = srv_sd;
+
+        srv_sd->master = srv;
+        array_init(&srv_sd->slaves,
+                   array_n(&conf_sd->slaves),
+                   sizeof(struct server*));
+
+        for (uint32_t j = 0; j < array_n(&conf_sd->slaves); j++) {
+            conf_srv = array_get(&conf_sd->slaves, j);
+            // Add a slave server to the pool's server[]
+            rv = conf_server_each_transform((void*)conf_srv, (void*)&sp->server);
+            ASSERT(rv == NC_OK);
+            srv = array_get(&sp->server, array_n(&sp->server) - 1);
+            srv->owner = sp;
+            srv->owner_shard = srv_sd;
+
+            struct server** ppsrv = array_push(&srv_sd->slaves);
+            *ppsrv = srv;
+        }
+    }
+
+    return rv;
 }

@@ -45,6 +45,9 @@
 #define NC_MBUF_MIN_SIZE    MBUF_MIN_SIZE
 #define NC_MBUF_MAX_SIZE    MBUF_MAX_SIZE
 
+// By default proxy listens on this port.
+#define NC_PROXY_PORT  22100
+
 static int show_help;
 static int show_version;
 static int test_conf;
@@ -65,10 +68,12 @@ static struct option long_options[] = {
     { "stats-addr",     required_argument,  NULL,   'a' },
     { "pid-file",       required_argument,  NULL,   'p' },
     { "mbuf-size",      required_argument,  NULL,   'm' },
+    { "proxy-addr",     required_argument,  NULL,   'x' },
+    { "proxy-port",     required_argument,  NULL,   'y' },
     { NULL,             0,                  NULL,    0  }
 };
 
-static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:";
+static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:";
 
 static rstatus_t
 nc_daemonize(int dump_core)
@@ -222,6 +227,8 @@ nc_show_usage(void)
         "  -i, --stats-interval=N : set stats aggregation interval in msec (default: %d msec)" CRLF
         "  -p, --pid-file=S       : set pid file (default: %s)" CRLF
         "  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: %d bytes)" CRLF
+        "  -x, --proxy-addr       : set proxy listen address (MUST provide)" CRLF
+        "  -y, --proxy-port       : set proxy listen port (MUST provide)" CRLF
         "",
         NC_LOG_DEFAULT, NC_LOG_MIN, NC_LOG_MAX,
         NC_LOG_PATH != NULL ? NC_LOG_PATH : "stderr",
@@ -300,6 +307,9 @@ nc_set_default_options(struct instance *nci)
     nci->pid = (pid_t)-1;
     nci->pid_filename = NULL;
     nci->pidfile = 0;
+
+    nci->proxy_port = NC_PROXY_PORT;
+    nci->proxy_ip= NULL;         // user must pass proxy addr.
 }
 
 static rstatus_t
@@ -403,6 +413,17 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             }
 
             nci->mbuf_chunk_size = (size_t)value;
+            break;
+
+        case 'x':
+            nci->proxy_ip = optarg;
+            log_stderr("nutcracker: proxy listen adddr: %s", nci->proxy_ip);
+            break;
+
+        case 'y':
+            nci->proxy_port = nc_atoi(optarg, strlen(optarg));
+            log_stderr("nutcracker: proxy listen port: %d",
+                       nci->proxy_port);
             break;
 
         case '?':
@@ -546,6 +567,12 @@ main(int argc, char **argv)
 
     status = nc_get_options(argc, argv, &nci);
     if (status != NC_OK) {
+        nc_show_usage();
+        exit(1);
+    }
+
+    if (nci.proxy_ip== NULL) {
+        log_stderr("must provide proxy_ip and proxy_port" CRLF);
         nc_show_usage();
         exit(1);
     }

@@ -67,13 +67,14 @@ core_ctx_create(struct instance *nci)
     ctx->max_nsconn = 0;
 
     /* parse and create configuration */
-    ctx->cf = conf_create(nci->conf_filename);
+    /*ctx->cf = conf_create(nci->conf_filename);
     if (ctx->cf == NULL) {
         nc_free(ctx);
         return NULL;
-    }
+    }*/
 
-    ctx->json_cf = conf_json_create("./conf/conf.json");
+    // We only use the pool whose proxy list includes "proxy_addr".
+    ctx->json_cf = conf_json_create("./conf/conf.json", nci);
 
     /* initialize server pool from configuration */
     //status = server_pool_init(&ctx->pool, &ctx->cf->pool, ctx);

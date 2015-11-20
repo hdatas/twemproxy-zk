@@ -4,7 +4,7 @@
   // A pool
   {
     "name" : "pool1",  // pool name. ** Mandatory.
-    "proxy" : ["192.168.1.38:21000", "192.168.1.38:21001"], // proxies that connect to this pool. optional.
+    "proxy" : ["192.168.1.38:21000", "192.168.1.38:22001"], // proxies that connect to this pool. optional.
     "hash" : "fnv1a_64",  // ** mandatory
     "redis" : true,  // ** mandatory
     "server_retry_timeout": 2000,
@@ -14,14 +14,14 @@
       {
         "range_start" : 0,
         "range_end" : 9998,
-        "master" :  "localhost:30001",
-        "slave" : [ "localhost:30003"]
+        "master" :  "192.168.1.64:10010",
+        "slave" : [ "192.168.1.64:10020"]
       },
       {
         "range_start" : 9999,
         "range_end" : 100000,
-        "master" :  "localhost:31000",
-        "slave" : [ "localhost:31001",  "localhost:30004"]
+        "master" :  "192.168.1.64:10020",
+        "slave" : [ "192.168.1.64:10010"]
       }
     ]
   },
@@ -39,14 +39,14 @@
       {
         "range_start" : 0,
         "range_end" : 9998,
-        "master" :  "localhost:30010",
-        "slave" : [ "localhost:30002",  "localhost:30003"]
+        "master" :  "localhost:12340",
+        "slave" : [ "localhost:12340",  "localhost:12340"]
       },
       {
         "range_start" : 9999,
         "range_end" : 99999,
-        "master" :  "localhost:30011",
-        "slave" : [ "localhost:30003",  "localhost:30004"]
+        "master" :  "localhost:12340",
+        "slave" : [ "localhost:12340",  "localhost:12340"]
       }
     ]
   }

@@ -150,6 +150,9 @@ struct instance {
     pid_t           pid;                         /* process id */
     char            *pid_filename;               /* pid filename */
     unsigned        pidfile:1;                   /* pid file created? */
+
+    char            *proxy_ip;                   // proxy listen address
+    uint16_t        proxy_port;                  // proxy listen port
 };
 
 struct context *core_start(struct instance *nci);

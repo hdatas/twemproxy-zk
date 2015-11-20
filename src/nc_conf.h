@@ -59,8 +59,7 @@
 #define CONF_DEFAULT_KETAMA_PORT             11211
 #define CONF_DEFAULT_TCPKEEPALIVE            false
 
-struct conf_listen {
-    struct string   pname;   /* listen: as "hostname:port" */
+struct conf_listen { struct string   pname;   /* listen: as "hostname:port" */
     struct string   name;    /* hostname:port */
     int             port;    /* port */
     mode_t          perm;    /* socket permissions */
@@ -110,7 +109,7 @@ struct conf_pool {
 
     uint32_t shard_range_min;  // key hash code lower bound (inclusive)
     uint32_t shard_range_max;  // key hash code upper bound (inclusive)
-    struct array proxies;      // conf_server[] of proxies.
+    struct array proxies;  // conf_server of proxy to this pool.
     struct array shards;       // conf_shard[] of all shards in this pool
 };
 
@@ -154,7 +153,7 @@ rstatus_t conf_pool_each_transform(void *elem, void *data);
 
 struct conf *conf_create(char *filename);
 // Create conf from a file in json format.
-struct conf *conf_json_create(char *filename);
+struct conf *conf_json_create(char *filename, struct instance* nci);
 void conf_destroy(struct conf *cf);
 
 

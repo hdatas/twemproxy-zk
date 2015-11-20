@@ -66,6 +66,8 @@ struct continuum {
     uint32_t value;  /* hash value */
 };
 
+struct shard;
+
 struct server {
     uint32_t           idx;           /* server index */
     struct server_pool *owner;        /* owner pool */
@@ -82,6 +84,8 @@ struct server {
 
     int64_t            next_retry;    /* next retry time in usec */
     uint32_t           failure_count; /* # consecutive failures */
+
+    struct shard      *owner_shard;   // owner shard.
 };
 
 // A shard is a logical partition of key space.
@@ -93,8 +97,8 @@ struct shard {
     uint32_t            range_begin;    // lower bound of hash key value (inclusive)
     uint32_t            range_end;      // higher bound of hash key value (inclusive)
 
-    struct server       master;         // master server
-    struct array        slaves;         // array of slave servers
+    struct server*      master;         // pointer to master server
+    struct array        slaves;         // array of pointers to slave servers
 };
 
 struct server_pool {

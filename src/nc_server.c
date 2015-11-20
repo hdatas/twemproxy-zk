@@ -708,6 +708,42 @@ server_pool_server(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     return server;
 }
 
+// decide what shard a key belongs to within a server_pool.
+static struct shard*
+get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
+{
+    uint32_t nshards = array_n(&pool->shards);
+
+    if (nshards == 0) {
+        return NULL;
+    }
+
+    if (nshards == 1 || keylen == 0) {
+        log_debug(LOG_NOTICE, "case 1: key %s => shard %d", (char*)key, i);
+        return (struct shard*)array_get(&pool->shards, 0);;
+    }
+
+    int sdidx = 0;
+
+    uint32_t hv = pool->key_hash((char *)key, keylen);
+    hv == hv % pool->shard_range_max;
+    if (hv < pool->shard_range_min) {
+        hv = pool->shard_range_min;
+    }
+
+    // TODO: use a binary search tree to locate a shard.
+
+    for (uint32_t i = 0; i < nshards; i++) {
+        struct shard* sd = array_get(&pool->shards, i);
+        if (sd->shard_range_min <= sd && sd <= sd->shard_range_max) {
+            log_debug(LOG_NOTICE, "in shard-search: key %s => shard %d",
+                      (char*)key, i);
+            return sd;
+        }
+    }
+    return NULL;
+}
+
 struct conn *
 server_pool_conn(struct context *ctx, struct server_pool *pool, uint8_t *key,
                  uint32_t keylen)
@@ -716,16 +752,25 @@ server_pool_conn(struct context *ctx, struct server_pool *pool, uint8_t *key,
     struct server *server;
     struct conn *conn;
 
-    status = server_pool_update(pool);
+    //////////////////////////////////////
+    /*status = server_pool_update(pool);
     if (status != NC_OK) {
         return NULL;
-    }
+    }*/
 
     /* from a given {key, keylen} pick a server from pool */
-    server = server_pool_server(pool, key, keylen);
+    /*server = server_pool_server(pool, key, keylen);
     if (server == NULL) {
         return NULL;
-    }
+    }*/
+    //////////////////////////////////////
+
+    ///////////////
+    // hash(key) =>  shard => master server in shard
+    struct shard* sd = get_shard_from_key(pool, key, keylen);
+    ASSERT(sd != NULL);
+    //  always direct traffic to master.
+    server = &sd->master;
 
     /* pick a connection to a given server */
     conn = server_conn(server);
@@ -819,6 +864,12 @@ server_pool_each_calc_connections(void *elem, void *data)
 rstatus_t
 server_pool_run(struct server_pool *pool)
 {
+    //////
+    ASSERT(array_n(&pool->shards) > 0 &&
+           array_n(&pool->server) > 0);
+    return NC_OK;
+    //////
+
     ASSERT(array_n(&pool->server) != 0);
 
     switch (pool->dist_type) {
@@ -924,4 +975,13 @@ server_pool_deinit(struct array *server_pool)
     array_deinit(server_pool);
 
     log_debug(LOG_DEBUG, "deinit %"PRIu32" pools", npool);
+}
+
+
+// Pre-connect a shard in a pool.
+static void
+shard_each_preconnect(void* elem, void* data)
+{
+
+
 }
