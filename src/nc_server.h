@@ -97,7 +97,7 @@ struct shard {
     uint32_t            range_begin;    // lower bound of hash key value (inclusive)
     uint32_t            range_end;      // higher bound of hash key value (inclusive)
 
-    struct server*      master;         // pointer to master server
+    struct server       *master;        // pointer to master server
     struct array        slaves;         // array of pointers to slave servers
 };
 

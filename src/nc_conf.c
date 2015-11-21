@@ -339,6 +339,9 @@ conf_pool_each_transform(void *elem, void *data)
         return status;
     }*/
 
+    sp->shard_range_min = cp->shard_range_min;
+    sp->shard_range_max = cp->shard_range_max;
+
     log_debug(LOG_VERB, "transform to pool %"PRIu32" '%.*s'", sp->idx,
               sp->name.len, sp->name.data);
 

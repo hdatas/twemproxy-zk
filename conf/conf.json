@@ -3,7 +3,7 @@
   [
   // A pool
   {
-    "name" : "pool1",  // pool name. ** Mandatory.
+    "name" : "test-pool",  // pool name. ** Mandatory.
     "proxy" : ["192.168.1.38:21000", "192.168.1.38:22001"], // proxies that connect to this pool. optional.
     "hash" : "fnv1a_64",  // ** mandatory
     "redis" : true,  // ** mandatory
@@ -13,15 +13,15 @@
     "shards" : [  // each pool has a list of shards. Each shard has a master and N slaves.
       {
         "range_start" : 0,
-        "range_end" : 9998,
-        "master" :  "192.168.1.64:10010",
-        "slave" : [ "192.168.1.64:10020"]
+        "range_end" : 50000,
+        "master" :  "192.168.1.38:10010",
+        "slave" : [ "192.168.1.38:10020"]
       },
       {
-        "range_start" : 9999,
-        "range_end" : 100000,
-        "master" :  "192.168.1.64:10020",
-        "slave" : [ "192.168.1.64:10010"]
+        "range_start" : 50001,
+        "range_end" :   100000,
+        "master" :  "192.168.1.38:10020",
+        "slave" : [ "192.168.1.38:10010"]
       }
     ]
   },

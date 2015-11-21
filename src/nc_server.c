@@ -719,14 +719,14 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     }
 
     if (nshards == 1 || keylen == 0) {
-        log_debug(LOG_NOTICE, "case 1: key %s => shard %d", (char*)key, i);
+        log_debug(LOG_NOTICE, "case 1: key %s => shard %d", (char*)key, 0);
         return (struct shard*)array_get(&pool->shards, 0);;
     }
 
     int sdidx = 0;
 
     uint32_t hv = pool->key_hash((char *)key, keylen);
-    hv == hv % pool->shard_range_max;
+    hv = hv % pool->shard_range_max;
     if (hv < pool->shard_range_min) {
         hv = pool->shard_range_min;
     }
@@ -734,8 +734,8 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     // TODO: use a binary search tree to locate a shard.
 
     for (uint32_t i = 0; i < nshards; i++) {
-        struct shard* sd = array_get(&pool->shards, i);
-        if (sd->shard_range_min <= sd && sd <= sd->shard_range_max) {
+        struct shard* sd = (struct shard*)array_get(&pool->shards, i);
+        if (sd->range_begin <= hv && hv <= sd->range_end) {
             log_debug(LOG_NOTICE, "in shard-search: key %s => shard %d",
                       (char*)key, i);
             return sd;
@@ -770,7 +770,7 @@ server_pool_conn(struct context *ctx, struct server_pool *pool, uint8_t *key,
     struct shard* sd = get_shard_from_key(pool, key, keylen);
     ASSERT(sd != NULL);
     //  always direct traffic to master.
-    server = &sd->master;
+    server = sd->master;
 
     /* pick a connection to a given server */
     conn = server_conn(server);
