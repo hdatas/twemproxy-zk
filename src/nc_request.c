@@ -552,6 +552,14 @@ req_forward_stats(struct context *ctx, struct server *server, struct msg *msg)
     stats_server_incr_by(ctx, server, request_bytes, msg->mlen);
 }
 
+static bool
+is_server_conn_writable(struct conn* s_conn)
+{
+    struct server* srv = s_conn->owner;
+    struct shard*  sd = srv->owner_shard;
+    return sd->can_write;
+}
+
 static void
 req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
 {
@@ -581,7 +589,15 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
         req_forward_error(ctx, c_conn, msg);
         return;
     }
+
     ASSERT(!s_conn->client && !s_conn->proxy);
+
+    // Fail-fast a write-req is the target shard is not writable.
+    if (msg->is_write && !is_server_conn_writable(s_conn)) {
+        log_debug(LOG_NOTICE, "fail a write req to non-writable shard.");
+        req_forward_error(ctx, c_conn, msg);
+        return;
+    }
 
     /* enqueue the message (request) into server inq */
     if (TAILQ_EMPTY(&s_conn->imsg_q)) {

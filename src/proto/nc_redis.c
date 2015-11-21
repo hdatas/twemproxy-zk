@@ -530,6 +530,8 @@ redis_parse_req(struct msg *r)
 
                 if (str3icmp(m, 's', 'e', 't')) {
                     r->type = MSG_REQ_REDIS_SET;
+                    // This ia a write request.
+                    r->is_write = 1;
                     break;
                 }
 

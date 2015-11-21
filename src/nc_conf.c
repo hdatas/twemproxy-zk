@@ -2300,6 +2300,10 @@ conf_shards_to_server_shards(struct array* cf_shards,
         srv_sd->range_begin = conf_sd->range_begin;
         srv_sd->range_end = conf_sd->range_end;
 
+        // At beginning, a shard is readable + writable.
+        srv_sd->can_read = 1;
+        srv_sd->can_write = 1;
+
         // Add a the shard's master server to pool's server[]
         rv = conf_server_each_transform((void*)conf_srv, (void*)&sp->server);
         ASSERT(rv == NC_OK);

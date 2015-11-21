@@ -99,6 +99,9 @@ struct shard {
 
     struct server       *master;        // pointer to master server
     struct array        slaves;         // array of pointers to slave servers
+
+    int                 can_read;       // is this shard readable
+    int                 can_write;      // is this shard writeable
 };
 
 struct server_pool {

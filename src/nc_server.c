@@ -769,8 +769,9 @@ server_pool_conn(struct context *ctx, struct server_pool *pool, uint8_t *key,
     // hash(key) =>  shard => master server in shard
     struct shard* sd = get_shard_from_key(pool, key, keylen);
     ASSERT(sd != NULL);
-    //  always direct traffic to master.
+    // always direct traffic to master.
     server = sd->master;
+    /////////////////
 
     /* pick a connection to a given server */
     conn = server_conn(server);

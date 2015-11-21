@@ -270,6 +270,7 @@ done:
     msg->swallow = 0;
     msg->redis = 0;
 
+    msg->is_write = 0;  // By default it's not a write req
     return msg;
 }
 
