@@ -59,6 +59,15 @@
 #define CONF_DEFAULT_KETAMA_PORT             11211
 #define CONF_DEFAULT_TCPKEEPALIVE            false
 
+// zookeeper base path
+#define ZK_BASE                              "/distkv"
+
+// Global conf is stored at this znode.
+#define CONF_DEFAULT_CONF_ZNODE              "/distkv/global-conf"
+
+// At init, grab conf from zookeeper and save to this location.
+#define CONF_DEFAULT_FILE_SAVE_PATH          "/tmp/nc-conf"
+
 struct conf_listen { struct string   pname;   /* listen: as "hostname:port" */
     struct string   name;    /* hostname:port */
     int             port;    /* port */
@@ -115,6 +124,7 @@ struct conf_pool {
 
 struct conf {
     char          *fname;           /* file name (ref in argv[]) */
+    char          *zk_servers;      /* zookeeper hosts */
     FILE          *fh;              /* file handle */
     struct array  arg;              /* string[] (parsed {key, value} pairs) */
     struct array  pool;             /* conf_pool[] (parsed pools) */
@@ -153,7 +163,10 @@ rstatus_t conf_pool_each_transform(void *elem, void *data);
 
 struct conf *conf_create(char *filename);
 // Create conf from a file in json format.
-struct conf *conf_json_create(char *filename, struct instance* nci);
+struct conf *conf_json_create(char *filename, struct instance *nci);
+// Create conf from zookeeper.
+struct conf *conf_json_create_from_zk(char *zkservers, struct instance *nci,
+    struct context *ctx);
 void conf_destroy(struct conf *cf);
 
 

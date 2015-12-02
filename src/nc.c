@@ -70,10 +70,11 @@ static struct option long_options[] = {
     { "mbuf-size",      required_argument,  NULL,   'm' },
     { "proxy-addr",     required_argument,  NULL,   'x' },
     { "proxy-port",     required_argument,  NULL,   'y' },
+    { "zookeeper",      required_argument,  NULL,   'z' },
     { NULL,             0,                  NULL,    0  }
 };
 
-static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:";
+static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:z:";
 
 static rstatus_t
 nc_daemonize(int dump_core)
@@ -309,7 +310,7 @@ nc_set_default_options(struct instance *nci)
     nci->pidfile = 0;
 
     nci->proxy_port = NC_PROXY_PORT;
-    nci->proxy_ip= NULL;         // user must pass proxy addr.
+    nci->proxy_ip = NULL;         // user must pass proxy addr.
 }
 
 static rstatus_t
@@ -421,9 +422,15 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             break;
 
         case 'y':
-            nci->proxy_port = nc_atoi(optarg, strlen(optarg));
+            nci->proxy_port = (uint16_t)nc_atoi(optarg, strlen(optarg));
             log_stderr("nutcracker: proxy listen port: %d",
                        nci->proxy_port);
+            break;
+
+        case 'z':
+            nci->zk_servers = optarg;
+            log_stderr("nutcracker: use zookeeper %s",
+                       nci->zk_servers);
             break;
 
         case '?':
@@ -527,6 +534,10 @@ nc_post_run(struct instance *nci)
     if (nci->pidfile) {
         nc_remove_pidfile(nci);
     }
+    // Close zk connection.
+    if (nci->ctx->zkh) {
+      ZKClose(nci->ctx->zkh);
+    }
 
     signal_deinit();
 
@@ -571,7 +582,7 @@ main(int argc, char **argv)
         exit(1);
     }
 
-    if (nci.proxy_ip== NULL) {
+    if (nci.proxy_ip == NULL) {
         log_stderr("must provide proxy_ip and proxy_port" CRLF);
         nc_show_usage();
         exit(1);

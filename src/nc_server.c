@@ -897,6 +897,43 @@ server_pool_each_run(void *elem, void *data)
     return server_pool_run(elem);
 }
 
+static void
+set_watch_on_master_status(struct array *server_pool, struct context *ctx)
+{
+    for (uint32_t i = 0; i < array_n(server_pool); i++ ) {
+        struct server_pool *sp =
+          (struct server_pool*)array_get(server_pool, i);
+
+        for (uint32_t j = 0; j < array_n(&sp->shards); j++ ) {
+            struct shard *srv_sd = (struct shard*)array_get(&sp->shards, j);
+            struct server *srv = srv_sd->master;
+            ASSERT(srv->owner_shard == srv_sd);
+
+            char zkpath[5000];
+            sprintf(zkpath, "%s/pools/%s/shards/%d:%d/master/status",
+                    ZK_BASE,
+                    sp->name.data,
+                    srv_sd->range_begin,
+                    srv_sd->range_end);
+            int buflen = 5000;
+            char buf[buflen];
+
+            int rc = ZKGet(ctx->zkh, zkpath, buf, buflen, 0, 1);
+            if (rc <= 0) {
+                log_error("master %s status non-exist: %s",
+                          srv->name.data, zkpath);
+            } else {
+                log_debug(LOG_NOTICE, "master %s status znode %s: %s",
+                          srv->name.data, zkpath, buf);
+            }
+            //rc = ZKSetGetWatch(ctx->zkh, zkpath, DefaultGetWatcher, NULL);
+            rc = ZKSetExistsWatch(ctx->zkh, zkpath, DefaultExistsWatcher, NULL);
+            log_debug(LOG_NOTICE, "set watch on master %s status znode: %s",
+                      srv->name.data, zkpath);
+        }
+    }
+}
+
 rstatus_t
 server_pool_init(struct array *server_pool, struct array *conf_pool,
                  struct context *ctx)
@@ -920,6 +957,9 @@ server_pool_init(struct array *server_pool, struct array *conf_pool,
         return status;
     }
     ASSERT(array_n(server_pool) == npool);
+
+    // Set a watcher to each shard's master server status.
+    set_watch_on_master_status(server_pool, ctx);
 
     /* set ctx as the server pool owner */
     status = array_each(server_pool, server_pool_each_set_owner, ctx);

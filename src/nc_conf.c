@@ -20,6 +20,7 @@
 #include <nc_server.h>
 #include <proto/nc_proto.h>
 #include "parson/parson.h"
+#include "zkutil.h"
 
 #define DEFINE_ACTION(_hash, _name) string(#_name),
 static struct string hash_strings[] = {
@@ -157,6 +158,7 @@ conf_shard_deinit(struct conf_shard *cs) {
     array_deinit(&cs->slaves);
 }
 
+// Conver a conf_server to real backend server.
 rstatus_t
 conf_server_each_transform(void *elem, void *data)
 {
@@ -2121,6 +2123,48 @@ conf_json_dump(struct conf *cf)
 
 }
 
+struct conf *
+conf_json_create_from_zk(char *zkservers, struct instance* nci, struct context *ctx)
+{
+    // Connect to ZK, grab conf, save to a local file.
+    ctx->zkh = ZKConnect(zkservers);
+    if (!ctx->zkh) {
+      log_error("cannot connect to zk %s", zkservers);
+      return NULL;
+    }
+
+    // Read conf from zk, save to local file.
+    int buflen = 64000;
+    char buf[buflen];
+    int sync = 1;
+    int watch = 0;
+    int conf_len = ZKGet(ctx->zkh, CONF_DEFAULT_CONF_ZNODE, buf, buflen, watch, sync);
+    if (conf_len <= 0) {
+      log_error("read conf from zk: %s, ret %d",
+                CONF_DEFAULT_CONF_ZNODE, conf_len);
+      ZKClose(ctx->zkh);
+      ctx->zkh = NULL;
+      return NULL;
+    }
+
+    char fname[500];
+    sprintf(fname, "%s-proxy-%s-%d",
+            CONF_DEFAULT_FILE_SAVE_PATH, nci->proxy_ip, nci->proxy_port);
+    FILE *fh = fopen(fname, "w");
+    fwrite(buf, 1, conf_len, fh);
+    fclose(fh);
+
+    struct conf *cf;
+    cf = conf_json_create(fname, nci);
+    if (cf == NULL) {
+      return NULL;
+    }
+
+    cf->zk_servers = zkservers;
+    cf->fname = NULL;
+
+    return cf;
+}
 
 struct conf *
 conf_json_create(char *filename, struct instance* nci)
@@ -2271,9 +2315,9 @@ conf_server_to_conf_listen(struct conf_server* cs, struct conf_listen* cl)
     cl->valid = 1;
 }
 
-// Init server pools from info at conf_shards.
+// Init server shard from info at conf_shards.
 //
-// server_pool* is the owner pool for these servers.
+// server_pool* is the owner pool for this server shard.
 static rstatus_t
 conf_shards_to_server_shards(struct array* cf_shards,
                              struct array* srv_shards,

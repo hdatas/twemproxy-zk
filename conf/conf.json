@@ -1,16 +1,15 @@
 {
-  "pools":  // a list of pools.
+  "pools":
   [
-  // A pool
   {
-    "name" : "test-pool",  // pool name. ** Mandatory.
-    "proxy" : ["192.168.1.38:21000", "192.168.1.38:22001"], // proxies that connect to this pool. optional.
-    "hash" : "fnv1a_64",  // ** mandatory
-    "redis" : true,  // ** mandatory
+    "name" : "test-pool",
+    "proxy" : ["192.168.1.38:21000", "192.168.1.38:22001"],
+    "hash" : "fnv1a_64",
+    "redis" : true,
     "server_retry_timeout": 2000,
     "server_failure_limit": 1,
-    "shard_range": [0, 100000],  // begin/end range of a shard, inclusive.
-    "shards" : [  // each pool has a list of shards. Each shard has a master and N slaves.
+    "shard_range": [0, 100000],
+    "shards" :
       {
         "range_start" : 0,
         "range_end" : 50000,
@@ -26,15 +25,14 @@
     ]
   },
 
-  // Another pool.
   {
     "name" : "pool2",
-    "proxy" : ["192.168.1.47:22000"], // proxies that connect to this pool. optional.
+    "proxy" : ["192.168.1.47:22000"],
     "hash": "fnv1a_64",
     "redis": true,
     "server_retry_timeout": 2000,
     "server_failure_limit": 1,
-    "shard_range": [0, 100000],  // begin/end range of a shard, inclusive.
+    "shard_range": [0, 100000],
     "shards" : [
       {
         "range_start" : 0,

@@ -74,7 +74,14 @@ core_ctx_create(struct instance *nci)
     }*/
 
     // We only use the pool whose proxy list includes "proxy_addr".
-    ctx->json_cf = conf_json_create("./conf/conf.json", nci);
+    if (nci->zk_servers) {
+      ctx->json_cf = conf_json_create_from_zk(nci->zk_servers, nci, ctx);
+    } else if (nci->conf_filename) {
+      ctx->json_cf = conf_json_create(nci->conf_filename, nci);
+    } else {
+      log_debug(LOG_NOTICE, "no conf available");
+      return NULL;
+    }
 
     /* initialize server pool from configuration */
     //status = server_pool_init(&ctx->pool, &ctx->cf->pool, ctx);

@@ -10,7 +10,7 @@ AM_CPPFLAGS += -I $(top_srcdir)/src/event
 AM_CPPFLAGS += -I $(top_srcdir)/src/parson
 AM_CPPFLAGS += -I $(top_srcdir)/contrib/yaml-0.1.4/include
 
-AM_CFLAGS = -std=c99 -g -O0
+AM_CFLAGS = -std=c99
 # about -fno-strict-aliasing: https://github.com/twitter/twemproxy/issues/276
 AM_CFLAGS += -fno-strict-aliasing
 AM_CFLAGS += -Wall -Wshadow
@@ -20,6 +20,7 @@ AM_CFLAGS += -Wunused-function -Wunused-variable -Wunused-value
 AM_CFLAGS += -Wno-unused-parameter -Wno-unused-value
 AM_CFLAGS += -Wconversion -Wsign-compare
 AM_CFLAGS += -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wmissing-declarations
+AM_CFLAGS += -I/usr/local/include/zookeeper
 
 AM_LDFLAGS =
 AM_LDFLAGS += -lm -lpthread -rdynamic
@@ -29,6 +30,7 @@ endif
 if OS_FREEBSD
 AM_LDFLAGS += -lexecinfo
 endif
+AM_LDFLAGS += -L/usr/local/lib -lzookeeper_mt
 
 SUBDIRS = hashkit proto event parson
 
@@ -53,6 +55,7 @@ nutcracker_SOURCES =			\
 	nc_array.c nc_array.h		\
 	nc_util.c nc_util.h		\
 	nc_queue.h			\
+  zkutil.c zkutil.h \
 	nc.c
 
 nutcracker_LDADD = $(top_builddir)/src/hashkit/libhashkit.a

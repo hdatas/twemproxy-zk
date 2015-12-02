@@ -117,6 +117,7 @@ struct event_base;
 #include <nc_message.h>
 #include <nc_connection.h>
 #include <nc_server.h>
+#include <zkutil.h>
 
 struct context {
     uint32_t           id;          /* unique context id */
@@ -134,6 +135,8 @@ struct context {
 
     struct conf        *json_cf;    // configuration in json format
     struct array       pool;        // server_pool[] with shards
+
+    zhandle_t       *zkh;           // zookeeper handle
 };
 
 
@@ -142,6 +145,7 @@ struct instance {
     int             log_level;                   /* log level */
     char            *log_filename;               /* log filename */
     char            *conf_filename;              /* configuration filename */
+    char            *zk_servers;                 /* zookeeper hosts */
     uint16_t        stats_port;                  /* stats monitoring port */
     int             stats_interval;              /* stats aggregation interval */
     char            *stats_addr;                 /* stats monitoring addr */
