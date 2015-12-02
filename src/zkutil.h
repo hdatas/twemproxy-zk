@@ -69,7 +69,7 @@ void ZKClose(zhandle_t* zkh);
 int ZKCreate(zhandle_t *zkh, char* path, char *value, int value_len, int flags);
 
 // Get a znode value.
-int ZKGet(zhandle_t *zkh, char *path, char *buf, int buf_len, int watch, int sync);
+int ZKGet(zhandle_t *zkh, const char *path, char *buf, int buf_len, int watch, int sync);
 
 // Set an existing znode value.
 int ZKSet(zhandle_t *zkh, char* path, char *value, int value_len);
@@ -110,5 +110,9 @@ void GlobalWatcher(zhandle_t *zh,
                    int state,
                    const char *path,
                    void* ctx);
+
+const char* State2String(int state);
+
+const char* Type2String(int type);
 
 #endif  // _ZK_UTIL_H_

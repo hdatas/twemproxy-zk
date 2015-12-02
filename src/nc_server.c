@@ -897,6 +897,90 @@ server_pool_each_run(void *elem, void *data)
     return server_pool_run(elem);
 }
 
+// a shard's master address has changed.
+static void
+MasterAddressWatcher(zhandle_t *zkh,
+                     int type,
+                     int state,
+                     const char *path,
+                     void *ctx)
+{
+    struct shard *srv_sd = (struct shard *)ctx;
+    ASSERT(srv_sd != NULL);
+
+    int buflen = 1000;
+    char buf[buflen];
+    int rc;
+
+    log_error("Master Address Watcher got event %s, state %s at path %s",
+              Type2String(type), State2String(state), path);
+
+    if (type == ZOO_CREATED_EVENT) {
+
+    } else if (type == ZOO_CHANGED_EVENT) {
+      memset(buf, 0, (size_t)buflen);
+      rc = ZKGet(zkh, path, buf, buflen, 0, 1);
+      if (rc < 0) {
+          log_error("read %s failed!", path);
+      } else {
+          struct server *currsrv = srv_sd->master;
+          if (strncmp(buf, (void*)currsrv->name.data, (size_t)currsrv->name.len) != 0) {
+              // Master address has changed. Switch to a new master.
+              log_error("Use a new master %s for shard %s",
+                        buf, path);
+          }
+      }
+    } else if (type == ZOO_DELETED_EVENT) {
+
+    }
+
+    ZKSetExistsWatch(zkh, (char*)path, MasterAddressWatcher, ctx);
+}
+
+
+// a shard's master srv has changed its status.
+static void
+MasterStatusWatcher(zhandle_t *zkh,
+                    int type,
+                    int state,
+                    const char *path,
+                    void *ctx)
+{
+    struct shard *srv_sd = (struct shard *)ctx;
+    ASSERT(srv_sd != NULL);
+
+    int buflen = 1000;
+    char buf[buflen];
+    int rc;
+
+    log_error("Status Watcher got event %s, state %s at path %s",
+              Type2String(type), State2String(state), path);
+    if (type == ZOO_CREATED_EVENT) {
+
+    } else if (type == ZOO_CHANGED_EVENT) {
+      rc = ZKGet(zkh, path, buf, buflen, 0, 1);
+      if (rc < 0) {
+          log_error("read %s failed!", path);
+      } else {
+          if (strncmp(buf, "draining", 8) == 0) {
+              // should drain this server shard.
+              srv_sd->can_write = 0;
+              log_error("Turn shard %s to read-only.", path);
+          }
+      }
+    } else if (type == ZOO_DELETED_EVENT) {
+
+    }
+
+    ZKSetExistsWatch(zkh, (char*)path, MasterStatusWatcher, ctx);
+}
+
+// Set zk watcher on each master's "status", "address".
+//
+// Whenever a shard's master status or address changes,
+// watcher is triggered to take action:
+// if "status" == draining:  block all writes to the master.
+// if "address" changes, replace the master with a new server.
 static void
 set_watch_on_master_status(struct array *server_pool, struct context *ctx)
 {
@@ -920,6 +1004,7 @@ set_watch_on_master_status(struct array *server_pool, struct context *ctx)
                     srv_sd->range_begin,
                     srv_sd->range_end);
 
+            memset(buf, 0, (size_t)buflen);
             rc = ZKGet(ctx->zkh, zkpath, buf, buflen, 0, 1);
             if (rc <= 0) {
                 log_error("master %s status non-exist: %s",
@@ -928,11 +1013,20 @@ set_watch_on_master_status(struct array *server_pool, struct context *ctx)
                 log_debug(LOG_NOTICE, "master %s status znode %s: %s",
                           srv->name.data, zkpath, buf);
             }
-            //rc = ZKSetGetWatch(ctx->zkh, zkpath, DefaultGetWatcher, NULL);
-            rc = ZKSetExistsWatch(ctx->zkh, zkpath, DefaultExistsWatcher, NULL);
-            log_debug(LOG_NOTICE, "set watch on master %s status znode: %s",
+            // Set watch on master "status".
+            rc = ZKSetExistsWatch(ctx->zkh, zkpath, MasterStatusWatcher, srv_sd);
+            log_debug(LOG_NOTICE, "set watch on master %s status: %s",
                       srv->name.data, zkpath);
 
+            // Set watch on master "address".
+            sprintf(zkpath, "%s/pools/%s/shards/%d:%d/master/address",
+                    ZK_BASE,
+                    sp->name.data,
+                    srv_sd->range_begin,
+                    srv_sd->range_end);
+            rc = ZKSetExistsWatch(ctx->zkh, zkpath, MasterAddressWatcher, srv_sd);
+            log_debug(LOG_NOTICE, "set watch on master %s address: %s",
+                      srv->name.data, zkpath);
         }
         // Create an ephemeral znode for this pool:proxy
         sprintf(zkpath, "%s/pools/%s/proxies/%s",

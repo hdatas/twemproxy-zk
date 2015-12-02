@@ -22,7 +22,7 @@ static int connected = 0;
 static int expired = 0;
 
 // Convert ZK state to string.
-static const char* State2String(int state){
+const char* State2String(int state){
   if (state == 0)
     return "CLOSED_STATE";
   if (state == ZOO_CONNECTING_STATE)
@@ -40,7 +40,7 @@ static const char* State2String(int state){
 }
 
 // Convert ZK event type to string.
-static const char* Type2String(int type){
+const char* Type2String(int type){
   if (type == ZOO_CREATED_EVENT)
     return "CREATED_EVENT";
   if (type == ZOO_DELETED_EVENT)
@@ -164,7 +164,7 @@ void DefaultGetWatcher(zhandle_t *zkh,
     char buf[4000];
     int watch = 0;
     int sync = 1;
-    ZKGet(zkh, (char*)path, buf, sizeof(buf), watch, sync);
+    ZKGet(zkh, path, buf, sizeof(buf), watch, sync);
 
     // RE-arm watcher.
     if (cg) {
@@ -227,7 +227,7 @@ int ZKSet(zhandle_t *zkh, char* path, char *value, int value_len) {
 // a customer-defined watcher func.
 // If "sync == 1 and watch == 1",  will use global watcher.
 int ZKGet(zhandle_t *zkh,
-          char *path,
+          const char *path,
           char *buf,
           int buf_len,
           int watch,
@@ -242,7 +242,7 @@ int ZKGet(zhandle_t *zkh,
     ret_buf_len = buf_len;
     rc = zoo_get(zkh, path, watch, buf, &ret_buf_len, &stat);
   } else {
-    ctx.path = path;
+    ctx.path = (char*)path;
     ctx.buf = buf;
     ctx.buf_len = buf_len;
     ctx.ret_buf_len = 0;

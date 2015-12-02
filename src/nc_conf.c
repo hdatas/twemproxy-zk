@@ -158,6 +158,32 @@ conf_shard_deinit(struct conf_shard *cs) {
     array_deinit(&cs->slaves);
 }
 
+static rstatus_t
+conf_server_to_server(struct conf_server *cs, struct server *s)
+{
+    // a struct server owner is a srv_pool.
+    s->owner = NULL;
+
+    s->pname = cs->pname;
+    s->name = cs->name;
+    s->addrstr = cs->addrstr;
+    s->port = (uint16_t)cs->port;
+    s->weight = (uint32_t)cs->weight;
+
+    nc_memcpy(&s->info, &cs->info, sizeof(cs->info));
+
+    s->ns_conn_q = 0;
+    TAILQ_INIT(&s->s_conn_q);
+
+    s->next_retry = 0LL;
+    s->failure_count = 0;
+
+    log_debug(LOG_VERB, "transform to server %"PRIu32" '%.*s'",
+              s->idx, s->pname.len, s->pname.data);
+
+    return NC_OK;
+}
+
 // Conver a conf_server to real backend server.
 rstatus_t
 conf_server_each_transform(void *elem, void *data)
@@ -2352,8 +2378,13 @@ conf_shards_to_server_shards(struct array* cf_shards,
         srv_sd->can_read = 1;
         srv_sd->can_write = 1;
 
-        // Add a the shard's master server to pool's server[]
-        rv = conf_server_each_transform((void*)conf_srv, (void*)&sp->server);
+        // Add the shard's master server to pool's server[]
+        srv = array_push(&sp->server);
+        srv->idx = array_idx(&sp->server, srv);
+
+        rv = conf_server_to_server(conf_srv, srv);
+        //rv = conf_server_each_transform((void*)conf_srv, (void*)&sp->server);
+
         ASSERT(rv == NC_OK);
         srv = array_get(&sp->server, array_n(&sp->server) - 1);
         srv->owner = sp;
@@ -2366,8 +2397,13 @@ conf_shards_to_server_shards(struct array* cf_shards,
 
         for (uint32_t j = 0; j < array_n(&conf_sd->slaves); j++) {
             conf_srv = array_get(&conf_sd->slaves, j);
+            srv = array_push(&sp->server);
+            srv->idx = array_idx(&sp->server, srv);
+
             // Add a slave server to the pool's server[]
-            rv = conf_server_each_transform((void*)conf_srv, (void*)&sp->server);
+            rv = conf_server_to_server(conf_srv, srv);
+            //rv = conf_server_each_transform((void*)conf_srv, (void*)&sp->server);
+
             ASSERT(rv == NC_OK);
             srv = array_get(&sp->server, array_n(&sp->server) - 1);
             srv->owner = sp;
