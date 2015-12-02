@@ -900,6 +900,11 @@ server_pool_each_run(void *elem, void *data)
 static void
 set_watch_on_master_status(struct array *server_pool, struct context *ctx)
 {
+    int buflen = 5000;
+    char zkpath[buflen];
+    char buf[buflen];
+    int rc;
+
     for (uint32_t i = 0; i < array_n(server_pool); i++ ) {
         struct server_pool *sp =
           (struct server_pool*)array_get(server_pool, i);
@@ -909,16 +914,13 @@ set_watch_on_master_status(struct array *server_pool, struct context *ctx)
             struct server *srv = srv_sd->master;
             ASSERT(srv->owner_shard == srv_sd);
 
-            char zkpath[5000];
             sprintf(zkpath, "%s/pools/%s/shards/%d:%d/master/status",
                     ZK_BASE,
                     sp->name.data,
                     srv_sd->range_begin,
                     srv_sd->range_end);
-            int buflen = 5000;
-            char buf[buflen];
 
-            int rc = ZKGet(ctx->zkh, zkpath, buf, buflen, 0, 1);
+            rc = ZKGet(ctx->zkh, zkpath, buf, buflen, 0, 1);
             if (rc <= 0) {
                 log_error("master %s status non-exist: %s",
                           srv->name.data, zkpath);
@@ -930,7 +932,14 @@ set_watch_on_master_status(struct array *server_pool, struct context *ctx)
             rc = ZKSetExistsWatch(ctx->zkh, zkpath, DefaultExistsWatcher, NULL);
             log_debug(LOG_NOTICE, "set watch on master %s status znode: %s",
                       srv->name.data, zkpath);
+
         }
+        // Create an ephemeral znode for this pool:proxy
+        sprintf(zkpath, "%s/pools/%s/proxies/%s",
+                ZK_BASE, sp->name.data, sp->addrstr.data);
+        rc = ZKCreate(ctx->zkh, zkpath, NULL, -1, ZOO_EPHEMERAL);
+        log_debug(LOG_NOTICE, "created proxy marker znode %s, ret %d",
+                  zkpath, rc);
     }
 }
 

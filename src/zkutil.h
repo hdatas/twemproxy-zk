@@ -71,6 +71,9 @@ int ZKCreate(zhandle_t *zkh, char* path, char *value, int value_len, int flags);
 // Get a znode value.
 int ZKGet(zhandle_t *zkh, char *path, char *buf, int buf_len, int watch, int sync);
 
+// Set an existing znode value.
+int ZKSet(zhandle_t *zkh, char* path, char *value, int value_len);
+
 // Delete a znode.
 int ZKDelete(zhandle_t *zkh, char* path);
 

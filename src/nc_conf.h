@@ -68,7 +68,8 @@
 // At init, grab conf from zookeeper and save to this location.
 #define CONF_DEFAULT_FILE_SAVE_PATH          "/tmp/nc-conf"
 
-struct conf_listen { struct string   pname;   /* listen: as "hostname:port" */
+struct conf_listen {
+    struct string   pname;   /* listen: as "hostname:port" */
     struct string   name;    /* hostname:port */
     int             port;    /* port */
     mode_t          perm;    /* socket permissions */

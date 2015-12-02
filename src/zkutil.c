@@ -214,7 +214,12 @@ int ZKDelete(zhandle_t *zkh, char* path) {
   return rc;
 }
 
-
+int ZKSet(zhandle_t *zkh, char* path, char *value, int value_len) {
+  int rc = zoo_set(zkh, path, value, value_len, -1);
+  fprintf(stderr, "Set znode \"%s\" value \"%s\", ret %d\n",
+          path, value, rc);
+  return rc;
+}
 
 // Read a znode, optionally put watcher on it.
 //
@@ -317,7 +322,7 @@ zhandle_t* ZKConnect(char* zk_hosts) {
   zhandle_t* zkh = NULL;
   zkh = zookeeper_init(zk_hosts,
                        GlobalWatcher,
-                       30000,
+                       15000,
                        NULL,
                        0,
                        0);

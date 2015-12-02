@@ -2309,9 +2309,13 @@ static void
 conf_server_to_conf_listen(struct conf_server* cs, struct conf_listen* cl)
 {
     string_init(&cl->name);
+    string_init(&cl->pname);
     string_duplicate(&cl->name, &cs->name);
+    string_duplicate(&cl->pname, &cs->name);
+
     cl->port = cs->port;
     nc_memcpy(&cl->info, &cs->info, sizeof(cl->info));
+
     cl->valid = 1;
 }
 
