@@ -187,6 +187,20 @@ stats_server_init(struct stats_server *sts, struct server *s)
 
 }
 
+rstatus_t
+add_server_to_stats_pool(struct stats_pool *stp, struct server *srv)
+{
+    rstatus_t status;
+    struct stats_server *sts = array_push(&stp->server);
+
+    status = stats_server_init(sts, srv);
+    if (status != NC_OK) {
+        return status;
+    }
+
+    return status;
+}
+
 static rstatus_t
 stats_server_map(struct array *stats_server, struct array *server)
 {

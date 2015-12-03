@@ -723,8 +723,6 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
         return (struct shard*)array_get(&pool->shards, 0);;
     }
 
-    int sdidx = 0;
-
     uint32_t hv = pool->key_hash((char *)key, keylen);
     hv = hv % pool->shard_range_max;
     if (hv < pool->shard_range_min) {
@@ -736,7 +734,7 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     for (uint32_t i = 0; i < nshards; i++) {
         struct shard* sd = (struct shard*)array_get(&pool->shards, i);
         if (sd->range_begin <= hv && hv <= sd->range_end) {
-            log_debug(LOG_NOTICE, "in shard-search: key %s => shard %d",
+            log_debug(LOG_NOTICE, "shard-search: key %s => shard %d",
                       (char*)key, i);
             return sd;
         }
@@ -897,6 +895,61 @@ server_pool_each_run(void *elem, void *data)
     return server_pool_run(elem);
 }
 
+// Add a server to the given shard.
+//
+// "saddr" is "ip:port" string representing the new server address.
+static struct server*
+AddServerFromAddressString(struct shard *sd, char *saddr)
+{
+    // Parse the "ip:port" string.
+    uint32_t len = (uint32_t)strlen(saddr);
+    uint8_t *s_name, *s_port;
+
+    uint8_t *delim = nc_strchr((uint8_t*)saddr,
+                               (uint8_t*)(saddr + len),
+                               ':');
+    ASSERT(delim != NULL);
+    s_name = (uint8_t*)saddr;
+    s_port = delim + 1;
+
+    // Grab a struct server.
+    struct server_pool *sp = sd->owner;
+    struct server *srv = array_push(&sp->server);
+
+    ASSERT(srv != NULL);
+    memset(srv, 0, sizeof(*srv));
+
+    // Init server fields.
+    srv->idx = array_idx(&sp->server, srv);
+    srv->owner = sp;
+    srv->owner_shard = sd;
+
+    string_copy(&srv->pname, (const uint8_t*)saddr, len);
+    string_copy(&srv->name, (const uint8_t*)saddr, len);
+    string_copy(&srv->addrstr,
+                (const uint8_t*)saddr,
+                (uint32_t)(delim - s_name));
+    srv->port = (uint16_t)nc_atoi(s_port, (uint32_t)(len - (delim + 1 - s_name)));
+    srv->weight = 0;
+
+    rstatus_t status = nc_resolve(&srv->addrstr, srv->port, &srv->info);
+    if (status != NC_OK) {
+        string_deinit(&srv->pname);
+        string_deinit(&srv->name);
+        string_deinit(&srv->addrstr);
+        array_pop(&sp->server);
+        return NULL;
+    }
+
+    srv->ns_conn_q = 0;
+    TAILQ_INIT(&srv->s_conn_q);
+
+    srv->next_retry = 0LL;
+    srv->failure_count = 0;
+
+    return srv;
+}
+
 // a shard's master address has changed.
 static void
 MasterAddressWatcher(zhandle_t *zkh,
@@ -907,6 +960,10 @@ MasterAddressWatcher(zhandle_t *zkh,
 {
     struct shard *srv_sd = (struct shard *)ctx;
     ASSERT(srv_sd != NULL);
+    struct server_pool *pool = srv_sd->owner;
+    struct context *pool_ctx = pool->ctx;
+    uint32_t pool_idx = array_idx(&pool_ctx->pool, pool);
+    ASSERT(pool_idx == pool->idx);
 
     int buflen = 1000;
     char buf[buflen];
@@ -924,10 +981,33 @@ MasterAddressWatcher(zhandle_t *zkh,
           log_error("read %s failed!", path);
       } else {
           struct server *currsrv = srv_sd->master;
-          if (strncmp(buf, (void*)currsrv->name.data, (size_t)currsrv->name.len) != 0) {
+          if (strlen(buf) != (size_t)currsrv->name.len ||
+              strncmp(buf, (void*)currsrv->name.data, strlen(buf)) != 0) {
+
               // Master address has changed. Switch to a new master.
+              struct server *srv = AddServerFromAddressString(srv_sd, buf);
+
+              // Add a corresponding stats_server.
+              struct stats_pool *stp;
+              stp = array_get(&pool_ctx->stats->current, pool_idx);
+              add_server_to_stats_pool(stp, srv);
+              stp = array_get(&pool_ctx->stats->shadow, pool_idx);
+              add_server_to_stats_pool(stp, srv);
+              stp = array_get(&pool_ctx->stats->sum, pool_idx);
+              add_server_to_stats_pool(stp, srv);
+
+              // TODO: should use a lock to protect ?
+
+              // TODO: retire original master ?
+
+              // !!! Switch to a new master.
+              srv_sd->master = srv;
+              if (!srv_sd->can_write) {
+                  srv_sd->can_write = 1;
+              }
+
               log_error("Use a new master %s for shard %s",
-                        buf, path);
+                        srv->pname.data, path);
           }
       }
     } else if (type == ZOO_DELETED_EVENT) {
@@ -1121,11 +1201,3 @@ server_pool_deinit(struct array *server_pool)
     log_debug(LOG_DEBUG, "deinit %"PRIu32" pools", npool);
 }
 
-
-// Pre-connect a shard in a pool.
-static void
-shard_each_preconnect(void* elem, void* data)
-{
-
-
-}

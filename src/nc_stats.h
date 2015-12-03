@@ -212,4 +212,6 @@ struct stats *stats_create(uint16_t stats_port, char *stats_ip, int stats_interv
 void stats_destroy(struct stats *stats);
 void stats_swap(struct stats *stats);
 
+rstatus_t add_server_to_stats_pool(struct stats_pool *stp, struct server *srv);
+
 #endif
