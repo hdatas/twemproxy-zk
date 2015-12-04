@@ -230,6 +230,7 @@ nc_show_usage(void)
         "  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: %d bytes)" CRLF
         "  -x, --proxy-addr       : set proxy listen address (MUST provide)" CRLF
         "  -y, --proxy-port       : set proxy listen port (MUST provide)" CRLF
+        "  -z, --zookeeper        : set zookeeper server hosts (MUST provide)" CRLF
         "",
         NC_LOG_DEFAULT, NC_LOG_MIN, NC_LOG_MAX,
         NC_LOG_PATH != NULL ? NC_LOG_PATH : "stderr",
