@@ -9,7 +9,7 @@
     "server_retry_timeout": 2000,
     "server_failure_limit": 1,
     "shard_range": [0, 100000],
-    "shards" :
+    "shards" : [
       {
         "range_start" : 0,
         "range_end" : 50000,

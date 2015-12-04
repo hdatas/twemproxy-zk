@@ -1035,9 +1035,8 @@ MasterStatusWatcher(zhandle_t *zkh,
 
     log_error("Status Watcher got event %s, state %s at path %s",
               Type2String(type), State2String(state), path);
-    if (type == ZOO_CREATED_EVENT) {
-
-    } else if (type == ZOO_CHANGED_EVENT) {
+    if (type == ZOO_CREATED_EVENT ||
+        type == ZOO_CHANGED_EVENT) {
       rc = ZKGet(zkh, path, buf, buflen, 0, 1);
       if (rc < 0) {
           log_error("read %s failed!", path);
@@ -1046,6 +1045,9 @@ MasterStatusWatcher(zhandle_t *zkh,
               // should drain this server shard.
               srv_sd->can_write = 0;
               log_error("Turn shard %s to read-only.", path);
+          } else if (strncmp(buf, "running", 7) == 0) {
+              srv_sd->can_write = 1;
+              log_error("Turn shard %s to read-write.", path);
           }
       }
     } else if (type == ZOO_DELETED_EVENT) {
@@ -1078,11 +1080,14 @@ set_watch_on_master_status(struct array *server_pool, struct context *ctx)
             struct server *srv = srv_sd->master;
             ASSERT(srv->owner_shard == srv_sd);
 
-            sprintf(zkpath, "%s/pools/%s/shards/%d:%d/master/status",
+            //sprintf(zkpath, "%s/pools/%s/shards/%d:%d/master/status",
+            //        ZK_BASE,
+            //        sp->name.data,
+            //        srv_sd->range_begin,
+            //        srv_sd->range_end);
+            sprintf(zkpath, "%s/hosts/%s/status",
                     ZK_BASE,
-                    sp->name.data,
-                    srv_sd->range_begin,
-                    srv_sd->range_end);
+                    srv->name.data);
 
             memset(buf, 0, (size_t)buflen);
             rc = ZKGet(ctx->zkh, zkpath, buf, buflen, 0, 1);
