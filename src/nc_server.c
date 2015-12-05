@@ -972,9 +972,8 @@ MasterAddressWatcher(zhandle_t *zkh,
     log_error("Master Address Watcher got event %s, state %s at path %s",
               Type2String(type), State2String(state), path);
 
-    if (type == ZOO_CREATED_EVENT) {
-
-    } else if (type == ZOO_CHANGED_EVENT) {
+    if (type == ZOO_CREATED_EVENT ||
+        type == ZOO_CHANGED_EVENT) {
       memset(buf, 0, (size_t)buflen);
       rc = ZKGet(zkh, path, buf, buflen, 0, 1);
       if (rc < 0) {
@@ -1104,7 +1103,7 @@ set_watch_on_master_status(struct array *server_pool, struct context *ctx)
                       srv->name.data, zkpath);
 
             // Set watch on master "address".
-            sprintf(zkpath, "%s/pools/%s/shards/%d:%d/master/address",
+            sprintf(zkpath, "%s/pools/%s/shards/%d:%d/master/addr",
                     ZK_BASE,
                     sp->name.data,
                     srv_sd->range_begin,
