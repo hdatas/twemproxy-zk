@@ -6,7 +6,6 @@ import socket
 import json
 from datetime import timedelta
 
-plugin_name = 'KVProxy'
 
 class KVProxyPlugin(object):
   """
@@ -18,6 +17,7 @@ class KVProxyPlugin(object):
     self.port = '22222'
     # default interval is 20 seconds.
     self.interval = 20
+    self.plugin_name = 'distkvproxy'
 
   def config(self, conf):
     """
@@ -42,19 +42,118 @@ class KVProxyPlugin(object):
                          % node.key)
 
 
-  def submit(self, type, instance, value, server=None):
-    if server:
-      plugin_instance = '%s-%s' % (self.port, server)
-    else:
-      plugin_instance = str(self.port)
+  def submit(self, type, type_instance, value, server, port):
+    plugin_instance = '%s_%s' % (self.port, server)
 
     v = collectd.Values()
     v.plugin = self.plugin_name
     v.plugin_instance = plugin_instance
     v.type = type
-    v.type_instance = instance
+    v.type_instance = type_instance
     v.values = [value, ]
     v.dispatch()
+
+
+  def parse_server(self, sname, server):
+    """
+      Parse proxy stats info about a server, then send to collectd
+
+      :param sname:  backend server name
+      :param server: json obj representing a server stats.
+    """
+    submit('connections',
+           'server_connections_%s' % sname,
+           str(server['server_connections']),
+           self.server, self.port)
+    submit('error',
+           'server_eof_%s' % sname,
+           str(server['server_eof']),
+           self.server, self.port)
+    submit('error',
+           'server_err_%s' % sname,
+           str(server['server_err']),
+           self.server, self.port)
+    submit('count',
+           'requests_%s' % sname,
+           str(server['requests']),
+           self.server, self.port)
+    submit('count',
+           'request_bytes_%s' % sname,
+           str(server['request_bytes']),
+           self.server, self.port)
+    submit('count',
+           'responses_%s' % sname,
+           str(server['responses']),
+           self.server, self.port)
+    submit('count',
+           'response_bytes_%s' % sname,
+           str(server['response_bytes']),
+           self.server, self.port)
+    submit('count',
+           'in_queue_%s' % sname,
+           str(server['in_queue']),
+           self.server, self.port)
+    submit('count',
+           'in_queue_bytes_%s' % sname,
+           str(server['in_queue_bytes']),
+           self.server, self.port)
+    submit('count',
+           'out_queue_%s' % sname,
+           str(server['out_queue']),
+           self.server, self.port)
+    submit('count',
+           'out_queue_bytes_%s' % sname,
+           str(server['out_queue_bytes']),
+           self.server, self.port)
+
+
+  def parse_pool(self, pname, pool):
+    """
+      Parse proxy stats info about a KV pool, then send to collectd
+
+      :param pname: pool name
+      :param pool:  json obj representing pool stats.
+    """
+
+    # First, record top summaries for this pool.
+    submit('connections', 'client_connections', str(pool['client_connections']),
+           self.server, self.port)
+    submit('error', 'client_err', str(pool['client_err']),
+           self.server, self.port)
+    submit('error', 'client_eof', str(pool['client_eof']),
+           self.server, self.port)
+    submit('error', 'server_ejects', str(pool['server_ejects']),
+           self.server, self.port)
+    submit('error', 'forward_error', str(pool['forward_error']),
+           self.server, self.port)
+    submit('count', 'fragments', str(pool['fragments']),
+           self.server, self.port)
+
+
+  def send_stats_to_collectd(self, content):
+    """
+      Parse stats content string, send values to collectd.
+
+      :param content: stats string, in json format.
+    """
+    stats = json.loads(content)
+
+    for k in sorted(stats.keys()):
+      try:
+        # Only look into kv-pools, skip high-level summary stats.
+        v = stats[k]
+        if type(v) is dict:
+          # Now 'k' is pool name, 'v' is object representing the pool.
+          parse_pool(k, v)
+
+          # Look into each server in the pool.
+          for bk in v.keys():
+            # TODO: summarize counts / errors of all servers.
+            if type(v[bk]) is dict:
+              # Now 'bk' is backend server name
+              parse_server(bk, v[bk])
+      except:
+        pass
 
 
   def read_proxy_stats(self):
@@ -66,232 +165,12 @@ class KVProxyPlugin(object):
     buf = True
     content = ''
     while buf:
-      buf = conn.recv(1024)
+      buf = conn.recv(4096)
       content += buf
     conn.close()
 
     print "content : %s" % (content)
     self.send_stats_to_collectd(content);
-
-
-  def parse_server(self, sname, server):
-    """
-      Parse stats info about a server, send to collectd
-      
-      :param sname:  server name
-      :param server: json obj representing a server stats.
-    """
-    total_req = 0
-    total_req_bytes = 0
-    total_rsp = 0
-    total_rsp_bytes = 0
-
-    val = collectd.Values()
-    val.plugin = plugin_name;
-    val.plugin_instance = sname
-    val.type = 'counter'
-    val.type_instance = 'client_connections'
-    val.values = [str(pool['client_connections'])]
-    val.dispatch()
-
-
-  def parse_pool(self, pname, pool):
-    """
-      Parse stats info about a KV pool, send to collectd
-      
-      :param pname: pool name
-      :param pool:  json obj representing pool stats.
-    """
-
-    # First, show top summary for this pool.
-    val = collectd.Values()
-    val.plugin = plugin_name;
-    val.plugin_instance = pname;
-    val.type = 'connections'
-    val.type_instance = 'client_connections'
-    val.values = [str(pool['client_connections'])]
-    val.dispatch()
-
-    val = collectd.Values()
-    val.plugin = plugin_name;
-    val.plugin_instance = pname;
-    val.type = 'error'
-    val.type_instance = 'client_err'
-    val.values = [str(pool['client_err'])]
-    val.dispatch()
-
-    val = collectd.Values()
-    val.plugin = plugin_name;
-    val.plugin_instance = pname;
-    val.type = 'error'
-    val.type_instance = 'server_ejects'
-    val.values = [str(pool['server_ejects'])]
-    val.dispatch()
-
-    val = collectd.Values()
-    val.plugin = plugin_name;
-    val.plugin_instance = pname;
-    val.type = 'error'
-    val.type_instance = 'forward_error'
-    val.values = [str(pool['forward_error'])]
-    val.dispatch()
-
-    # Now, look into each server in the pool.
-    for k, v in pool.iteritems():
-      if type(v) not dict:
-        pass
-      # now we know "k" is server name, v is dict.
-      self.parse_server(k, v)
-
-
-  def send_stats_to_collectd(self, content):
-    """
-      Parse stats content string, send values to collectd.
-
-      :param content: stats string, in json format.
-    """
-
-    stats = json.loads(content)
-
-    for k in sorted(stats.keys()):
-      try:
-        v = stats[k]
-        # Only look into kv-pools, skip high-level summary stats.
-        v['server_ejects']
-        
-        # now 'k' is pool name
-
-        #  dispatch([type][, values][, plugin_instance][, type_instance][, plugin][, host][, time][, interval]) -> None.
-        metric = collectd.Values()
-        metric.plugin = 'twemproxy-%s' % k
-        metric.type_instance = 'client_connections'
-        #  metric.plugin_instance = 'client_connections'
-        metric.type = 'tcp_connections'
-        metric.values = [str(v['client_connections'])]
-        metric.dispatch()
-
-        metric = collectd.Values()
-        metric.plugin = 'twemproxy-%s' % k
-        metric.type_instance = 'client_eof'
-        metric.type = 'derive'
-        metric.values = [str(v['client_eof'])]
-        metric.dispatch()
-
-        metric = collectd.Values()
-        metric.plugin = 'twemproxy-%s' % k
-        metric.type_instance = 'forward_error'
-        metric.type = 'derive'
-        metric.values = [str(v['forward_error'])]
-        metric.dispatch()
-
-        metric = collectd.Values()
-        metric.plugin = 'twemproxy-%s' % k
-        metric.type_instance = 'client_err'
-        metric.type = 'derive'
-        metric.values = [str(v['client_err'])]
-        metric.dispatch()
-
-        metric = collectd.Values()
-        metric.plugin = 'twemproxy-%s' % k
-        metric.type_instance = 'fragments'
-        metric.type = 'derive'
-        metric.values = [str(v['fragments'])]
-        metric.dispatch()
-
-        metric = collectd.Values()
-        metric.plugin = 'twemproxy-%s' % k
-        metric.type_instance = 'server_ejects'
-        metric.type = 'derive'
-        metric.values = [str(v['server_ejects'])]
-        metric.dispatch()
-
-        for bk in v.keys():
-          if type(v[bk]) is dict:
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-server_eof' % bk
-            metric.type = 'derive'
-            metric.values = [str(v[bk]['server_eof'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-server_err' % bk
-            metric.type = 'derive'
-            metric.values = [str(v[bk]['server_err'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-server_connections' % bk
-            metric.type = 'gauge'
-            metric.values = [str(v[bk]['server_connections'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-server_timedout' % bk
-            metric.type = 'derive'
-            metric.values = [str(v[bk]['server_timedout'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-responses' % bk
-            metric.type = 'counter'
-            metric.values = [str(v[bk]['responses'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-response_bytes' % bk
-            metric.type = 'total_bytes'
-            metric.values = [str(v[bk]['response_bytes'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-in_queue_bytes' % bk
-            metric.type = 'gauge'
-            metric.values = [str(v[bk]['in_queue_bytes'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-out_queue_bytes' % bk
-            metric.type = 'gauge'
-            metric.values = [str(v[bk]['out_queue_bytes'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-request_bytes' % bk
-            metric.type = 'derive'
-            metric.values = [str(v[bk]['request_bytes'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-requests' % bk
-            metric.type = 'derive'
-            metric.values = [str(v[bk]['requests'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-in_queue' % bk
-            metric.type = 'gauge'
-            metric.values = [str(v[bk]['in_queue'])]
-            metric.dispatch()
-
-            metric = collectd.Values()
-            metric.plugin = 'twemproxy-%s' % k
-            metric.type_instance = '%s-out_queue' % bk
-            metric.type = 'gauge'
-            metric.values = [str(v[bk]['out_queue'])]
-            metric.dispatch()
-      except:
-        pass
 
 
 proxy = KVProxyPlugin()
