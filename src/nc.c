@@ -71,10 +71,11 @@ static struct option long_options[] = {
     { "proxy-addr",     required_argument,  NULL,   'x' },
     { "proxy-port",     required_argument,  NULL,   'y' },
     { "zookeeper",      required_argument,  NULL,   'z' },
+    { "zkconfig",       required_argument,  NULL,   'g' },
     { NULL,             0,                  NULL,    0  }
 };
 
-static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:z:";
+static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:z:g:";
 
 static rstatus_t
 nc_daemonize(int dump_core)
@@ -231,13 +232,15 @@ nc_show_usage(void)
         "  -x, --proxy-addr       : set proxy listen address (MUST provide)" CRLF
         "  -y, --proxy-port       : set proxy listen port (MUST provide)" CRLF
         "  -z, --zookeeper        : set zookeeper server hosts (MUST provide)" CRLF
+        "  -g, --zkconfig         : set zk config file path (default: %s)" CRLF
         "",
         NC_LOG_DEFAULT, NC_LOG_MIN, NC_LOG_MAX,
         NC_LOG_PATH != NULL ? NC_LOG_PATH : "stderr",
         NC_CONF_PATH,
         NC_STATS_PORT, NC_STATS_ADDR, NC_STATS_INTERVAL,
         NC_PID_FILE != NULL ? NC_PID_FILE : "off",
-        NC_MBUF_SIZE);
+        NC_MBUF_SIZE,
+        CONF_DEFAULT_CONF_ZNODE);
 }
 
 static rstatus_t
@@ -312,6 +315,9 @@ nc_set_default_options(struct instance *nci)
 
     nci->proxy_port = NC_PROXY_PORT;
     nci->proxy_ip = NULL;         // user must pass proxy addr.
+
+    nci->zk_config = CONF_DEFAULT_CONF_ZNODE;
+    nci->zk_servers = NULL;
 }
 
 static rstatus_t
@@ -381,6 +387,7 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             }
 
             nci->stats_port = (uint16_t)value;
+            log_stderr("nutcracker: stats srv on port %d", value);
             break;
 
         case 'i':
@@ -432,6 +439,12 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             nci->zk_servers = optarg;
             log_stderr("nutcracker: use zookeeper %s",
                        nci->zk_servers);
+            break;
+
+        case 'g':
+            nci->zk_config= optarg;
+            log_stderr("nutcracker: use zookeeper config path %s",
+                       nci->zk_config);
             break;
 
         case '?':

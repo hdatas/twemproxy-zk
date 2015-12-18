@@ -2164,7 +2164,7 @@ conf_json_create_from_zk(char *zkservers, struct instance* nci, struct context *
     char buf[buflen];
     int sync = 1;
     int watch = 0;
-    int conf_len = ZKGet(ctx->zkh, CONF_DEFAULT_CONF_ZNODE, buf, buflen, watch, sync);
+    int conf_len = ZKGet(ctx->zkh, nci->zk_config, buf, buflen, watch, sync);
     if (conf_len <= 0) {
       log_error("read conf from zk: %s, ret %d",
                 CONF_DEFAULT_CONF_ZNODE, conf_len);

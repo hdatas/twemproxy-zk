@@ -146,6 +146,7 @@ struct instance {
     char            *log_filename;               /* log filename */
     char            *conf_filename;              /* configuration filename */
     char            *zk_servers;                 /* zookeeper hosts */
+    char            *zk_config;                  /* config path on zookeeper */
     uint16_t        stats_port;                  /* stats monitoring port */
     int             stats_interval;              /* stats aggregation interval */
     char            *stats_addr;                 /* stats monitoring addr */
