@@ -6,6 +6,13 @@ import socket
 import json
 from datetime import timedelta
 
+PLUGIN_NAME = 'distkvproxy'
+VERBOSE_LOGGING = False
+
+def log_verbose(msg):
+  if VERBOSE_LOGGING:
+    collectd.info('{} [verbose]: {}'.format(PLUGIN_NAME, msg))
+
 
 class KVProxyPlugin(object):
   """
@@ -13,11 +20,13 @@ class KVProxyPlugin(object):
   """
 
   def __init__(self):
-    self.server = '127.0.0.1'
-    self.port = '22222'
+    # a list of proxy ips.
+    self.ips= []
+    # a list of proxy ports.
+    self.ports = []
     # default interval is 20 seconds.
     self.interval = 20
-    self.plugin_name = 'distkvproxy'
+    self.plugin_name = PLUGIN_NAME
 
   def config(self, conf):
     """
@@ -27,23 +36,39 @@ class KVProxyPlugin(object):
 
       :param conf: a Config object containing all info representing the
                    config tree.
+      example config section:
+      <>
+        proxy    ip1:port1 ip1:port2 ip1:port3
+        interval 20
+        verbose  true/false
+      <>
       For how to inteprete Config object, see here:
       https://collectd.org/documentation/manpages/collectd-python.5.shtml
     """
     for node in conf.children:
-      if node.key == 'Host':
-        self.server = node.values[0]
-      elif node.key == 'Port':
-        self.port = int(node.values[0])
-      elif node.key == 'Interval':
+      key = node.key.lower()
+
+      if key == 'proxy':
+        for s in node.values:
+          tp = s.split(':')
+          if len(tp) == 2:
+            self.ips.push(tp[0])
+            self.ports.push(tp[1])
+          else:
+            collectd.warning('KVProxyPlugin: invalid proxy address %s' % s)
+      elif key == 'interval':
         self.interval = float(node.values[0])
+      elif key == 'verbose':
+        global VERBOSE_LOGGING
+        if node.values[0] in ['true', 'True']:
+          VERBOSE_LOGGING = True
       else:
-        collectd.warning("KVProxyPlugin: Unkown configuration key %s"
+        collectd.warning('KVProxyPlugin: Unkown configuration key %s'
                          % node.key)
 
 
   def submit(self, type, type_instance, value, server, port):
-    plugin_instance = '%s_%s' % (self.port, server)
+    plugin_instance = '%s_%s' % (server, port)
 
     v = collectd.Values()
     v.plugin = self.plugin_name
@@ -54,87 +79,93 @@ class KVProxyPlugin(object):
     v.dispatch()
 
 
-  def parse_server(self, sname, server):
+  def parse_server(self, sname, server, ip, port):
     """
       Parse proxy stats info about a server, then send to collectd
 
       :param sname:  backend server name
       :param server: json obj representing a server stats.
+      :param ip:      proxy ip address
+      :param port:    proxy port
     """
-    submit('connections',
+    submit('tcp_connections',
            'server_connections_%s' % sname,
            str(server['server_connections']),
-           self.server, self.port)
-    submit('error',
+           ip, port)
+    submit('counter',
            'server_eof_%s' % sname,
            str(server['server_eof']),
-           self.server, self.port)
-    submit('error',
+           ip, port)
+    submit('counter',
            'server_err_%s' % sname,
            str(server['server_err']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('counter',
            'requests_%s' % sname,
            str(server['requests']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('counter',
            'request_bytes_%s' % sname,
            str(server['request_bytes']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('counter',
            'responses_%s' % sname,
            str(server['responses']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('counter',
            'response_bytes_%s' % sname,
            str(server['response_bytes']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('gauge',
            'in_queue_%s' % sname,
            str(server['in_queue']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('gauge',
            'in_queue_bytes_%s' % sname,
            str(server['in_queue_bytes']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('gauge',
            'out_queue_%s' % sname,
            str(server['out_queue']),
-           self.server, self.port)
-    submit('count',
+           ip, port)
+    submit('gauge',
            'out_queue_bytes_%s' % sname,
            str(server['out_queue_bytes']),
-           self.server, self.port)
+           ip, port)
 
 
-  def parse_pool(self, pname, pool):
+  def parse_pool(self, pname, pool, ip, port):
     """
       Parse proxy stats info about a KV pool, then send to collectd
 
       :param pname: pool name
       :param pool:  json obj representing pool stats.
+      :param ip:      proxy ip address
+      :param port:    proxy port
     """
 
     # First, record top summaries for this pool.
-    submit('connections', 'client_connections', str(pool['client_connections']),
-           self.server, self.port)
-    submit('error', 'client_err', str(pool['client_err']),
-           self.server, self.port)
-    submit('error', 'client_eof', str(pool['client_eof']),
-           self.server, self.port)
-    submit('error', 'server_ejects', str(pool['server_ejects']),
-           self.server, self.port)
-    submit('error', 'forward_error', str(pool['forward_error']),
-           self.server, self.port)
-    submit('count', 'fragments', str(pool['fragments']),
-           self.server, self.port)
+    submit('tcp_connections', 'client_connections', str(pool['client_connections']),
+           ip, port)
+    submit('counter', 'client_err', str(pool['client_err']),
+           ip, port)
+    submit('counter', 'client_eof', str(pool['client_eof']),
+           ip, port)
+    submit('counter', 'server_ejects', str(pool['server_ejects']),
+           ip, port)
+    submit('counter', 'forward_error', str(pool['forward_error']),
+           ip, port)
+    submit('counter', 'fragments', str(pool['fragments']),
+           ip, port)
 
 
-  def send_stats_to_collectd(self, content):
+  def send_stats_to_collectd(self, content, ip, port):
     """
       Parse stats content string, send values to collectd.
 
       :param content: stats string, in json format.
+      :param ip:      proxy ip address
+      :param port:    proxy port
     """
     stats = json.loads(content)
 
@@ -144,14 +175,14 @@ class KVProxyPlugin(object):
         v = stats[k]
         if type(v) is dict:
           # Now 'k' is pool name, 'v' is object representing the pool.
-          parse_pool(k, v)
+          parse_pool(k, v, ip, port)
 
           # Look into each server in the pool.
           for bk in v.keys():
             # TODO: summarize counts / errors of all servers.
             if type(v[bk]) is dict:
               # Now 'bk' is backend server name
-              parse_server(bk, v[bk])
+              parse_server(bk, v[bk], ip, port)
       except:
         pass
 
@@ -161,16 +192,19 @@ class KVProxyPlugin(object):
       Get actual data from proxy, pass them to Collectd.
 
     """
-    conn = socket.create_connection((self.server, self.port))
-    buf = True
-    content = ''
-    while buf:
-      buf = conn.recv(4096)
-      content += buf
-    conn.close()
+    for i in range(len(self.ips)):
+      ip = self.ips[i]
+      port = self.ports[i]
+      conn = socket.create_connection((ip, port))
+      buf = True
+      content = ''
+      while buf:
+        buf = conn.recv(4096)
+        content += buf
+      conn.close()
 
-    print "content : %s" % (content)
-    self.send_stats_to_collectd(content);
+      print 'proxy {}:{}, content : {}'.format(ip, port, content)
+      self.send_stats_to_collectd(content, ip, port);
 
 
 proxy = KVProxyPlugin()
