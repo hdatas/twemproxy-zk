@@ -529,6 +529,9 @@ req_forward_error(struct context *ctx, struct conn *conn, struct msg *msg)
     msg->error = 1;
     msg->err = errno;
 
+    // Inc the pool's "forward_error" counter. "conn" is a client.
+    stats_pool_incr(ctx, conn->owner, forward_error);
+
     /* noreply request don't expect any response */
     if (msg->noreply) {
         req_put(msg);
@@ -592,7 +595,7 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
 
     ASSERT(!s_conn->client && !s_conn->proxy);
 
-    // Fail-fast a write-req is the target shard is not writable.
+    // Fail-fast a write-req if the target shard is not writable.
     if (msg->is_write && !is_server_conn_writable(s_conn)) {
         log_debug(LOG_NOTICE, "fail a write req to non-writable shard.");
         req_forward_error(ctx, c_conn, msg);

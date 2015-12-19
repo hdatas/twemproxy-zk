@@ -723,7 +723,9 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
         return (struct shard*)array_get(&pool->shards, 0);;
     }
 
-    uint32_t hv = pool->key_hash((char *)key, keylen);
+    //uint32_t hv = pool->key_hash((char *)key, keylen);
+    uint32_t hv = hash_murmur((char *)key, keylen);
+
     hv = hv % pool->shard_range_max;
     if (hv < pool->shard_range_min) {
         hv = pool->shard_range_min;
