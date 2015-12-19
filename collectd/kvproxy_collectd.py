@@ -27,11 +27,12 @@ class KVProxyPlugin(object):
     if ip and port:
       self.ips.append(ip)
       self.ports.append(port)
- 
+
     # default interval is 20 seconds.
     self.interval = 20
     self.plugin_name = PLUGIN_NAME
     self.test = False
+    self.per_server_stats = False
 
 
   def config(self, conf):
@@ -75,6 +76,9 @@ class KVProxyPlugin(object):
       elif key == 'test':
         # if we are in test mode
         self.test = node.values[0]
+      elif key == 'perserverstats':
+        # should we report per-dbserver stats?
+        self.per_server_stats = node.values[0]
       else:
         collectd.warning('KVProxyPlugin: Unkown configuration key %s'
                          % node.key)
@@ -199,7 +203,10 @@ class KVProxyPlugin(object):
       if type(v) is dict:
         # Now 'k' is pool name, 'v' is object representing the pool.
         self.parse_pool(k, v, ip, port)
-        continue
+
+        # Check if we should report per-dbserver stats.
+        if not self.per_server_stats:
+          continue
 
         # Look into each server in the pool.
         for bk in v.keys():
