@@ -2550,6 +2550,15 @@ redis_fragment_argx(struct msg *r, uint32_t ncontinuum, struct msg_tqh *frag_msg
 
     ASSERT(array_n(r->keys) == (r->narg - 1) / key_step);
 
+    // this msg owner is a client conn. client conn owner is server_pool.
+    // The msg vector fragments are mapped to shards in pool.
+    struct conn *conn = r->owner;
+    struct server_pool *pool = conn->owner;
+    ncontinuum = array_n(&pool->shards);
+    if (ncontinuum == 0) {
+      return NC_ENOMEM;
+    }
+
     sub_msgs = nc_zalloc(ncontinuum * sizeof(*sub_msgs));
     if (sub_msgs == NULL) {
         return NC_ENOMEM;

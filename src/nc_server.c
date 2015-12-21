@@ -22,6 +22,9 @@
 #include <nc_server.h>
 #include <nc_conf.h>
 
+static struct shard*
+get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen);
+
 static void
 server_resolve(struct server *server, struct conn *conn)
 {
@@ -669,6 +672,15 @@ server_pool_idx(struct server_pool *pool, uint8_t *key, uint32_t keylen)
             }
         }
     }
+
+    ///////// distribute key to backend servers based on hash code
+    struct shard* sd = get_shard_from_key(pool, key, keylen);
+    ASSERT(sd != NULL);
+    // always direct traffic to master shard.
+    // Returns the maste shard id.
+    return sd->idx;
+
+    ////////////////////
 
     switch (pool->dist_type) {
     case DIST_KETAMA:
