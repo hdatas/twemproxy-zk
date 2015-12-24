@@ -1,0 +1,50 @@
+To add a python plugin for collectd (and dump data to influxdb), you need several steps:
+
+1. decide the data you want to collect, assign names, create a types.db file
+including the type-name, data-types, etc.
+
+2. write plugin in python to collect data, parse data, output in collectd
+format:
+host / plugin_plugin-instance  / type_type-instance / value
+
+3. write a conf for your own plugin, follow format below:
+
+<LoadPlugin python>
+  Globals true
+  </LoadPlugin>
+
+<Plugin python>
+  LogTraces true
+  Interactive false
+  ModulePath "/home/shawn/code/twemproxy-zk/collectd/"
+  Import "kvproxy_collectd"
+
+  <Module kvproxy_collectd>
+    # This is proxy's stats server address.
+    # Proxy  "192.168.0.38:21000" "192.168.0.38:21001"
+    Proxy  "192.168.0.38:21000"
+    Interval 30
+    Verbose  true
+    PerServerStats true
+  </Module>
+</Plugin>
+
+4. At /etc/collectd/collectd.conf file, include this file:
+
+TypesDB     "/home/shawn/code/twemproxy-zk/collectd/kvproxy_types.db"
+
+
+5. In /etc/collectd/collectd.conf file, include your plugin's conf:
+
+Include "/home/shawn/code/twemproxy-zk/collectd/kvproxy_collectd.conf"
+
+
+6. In /etc/collectd/collectd.conf file, enable network plugin to point to
+influxdb:
+
+
+LoadPlugin network
+
+<Plugin network>
+  Server "192.168.1.12" "25826"
+</Plugin>

@@ -8,7 +8,7 @@ import sys
 from random import randint
 
 PLUGIN_NAME = 'distkvproxy'
-VERBOSE_LOGGING = False
+VERBOSE_LOGGING = True
 
 def log_verbose(msg):
   if VERBOSE_LOGGING:
@@ -54,10 +54,12 @@ class KVProxyPlugin(object):
       For how to interpret config object, see here:
       https://collectd.org/documentation/manpages/collectd-python.5.shtml
     """
+    collectd.info('now config kvproxy {}'.format(conf))
     for node in conf.children:
       key = node.key.lower()
 
-      collectd.info('config: key: {}, value: {}'.format(key, node.values))
+      collectd.info('key: {0: <12}, value: {1: <12}'.format(key, node.values))
+      # collectd.info('config: key: {}, value: {}'.format(key, node.values))
       if key == 'proxy':
         for s in node.values:
           tp = s.split(':')
@@ -82,7 +84,7 @@ class KVProxyPlugin(object):
       else:
         collectd.warning('KVProxyPlugin: Unkown configuration key %s'
                          % node.key)
-    collectd.info('have inited plugin {}'.format(PLUGIN_NAME))
+    log_verbose('have inited plugin {}'.format(self.plugin_name))
 
 
   def submit(self, type, type_instance, value, server, port):
@@ -96,9 +98,19 @@ class KVProxyPlugin(object):
     v.plugin_instance = plugin_instance
     v.type = type
     v.type_instance = type_instance
-    if self.test:
-      value = randint(50, 100)
-    v.values = [value, ]
+    v.values = []
+    if isinstance(value, list):
+      if self.test:
+        for i in range(len(value)):
+          value[i] = randint(50, 100)
+      log_verbose('value is list: {}'.format(value))
+      v.values.extend(value)
+    else:
+      if self.test:
+        value = randint(50, 100)
+      v.values = [value, ]
+
+    log_verbose('submit value: {}'.format(v.values))
 
     try:
       v.dispatch()
@@ -116,48 +128,48 @@ class KVProxyPlugin(object):
       :param ip:      proxy ip address
       :param port:    proxy port
     """
-    self.submit('tcp_connections',
-                'server_connections_%s' % sname,
+    self.submit('server_connections',
+                sname,
                 str(server['server_connections']),
                 ip, port)
-    self.submit('counter',
-                'server_eof_%s' % sname,
+    self.submit('server_eof',
+                sname,
                 str(server['server_eof']),
                 ip, port)
-    self.submit('counter',
-                'server_err_%s' % sname,
+    self.submit('server_err',
+                sname,
                 str(server['server_err']),
                 ip, port)
-    self.submit('counter',
-                'requests_%s' % sname,
+    self.submit('requests',
+                sname,
                 str(server['requests']),
                 ip, port)
-    self.submit('counter',
-                'request_bytes_%s' % sname,
+    self.submit('request_bytes',
+                sname,
                 str(server['request_bytes']),
                 ip, port)
-    self.submit('counter',
-                'responses_%s' % sname,
+    self.submit('responses',
+                sname,
                 str(server['responses']),
                 ip, port)
-    self.submit('counter',
-                'response_bytes_%s' % sname,
+    self.submit('response_bytes',
+                sname,
                 str(server['response_bytes']),
                 ip, port)
-    self.submit('gauge',
-                'in_queue_%s' % sname,
+    self.submit('in_queue',
+                sname,
                 str(server['in_queue']),
                 ip, port)
-    self.submit('gauge',
-                'in_queue_bytes_%s' % sname,
+    self.submit('in_queue_bytes',
+                sname,
                 str(server['in_queue_bytes']),
                 ip, port)
-    self.submit('gauge',
-                'out_queue_%s' % sname,
+    self.submit('out_queue',
+                sname,
                 str(server['out_queue']),
                 ip, port)
-    self.submit('gauge',
-                'out_queue_bytes_%s' % sname,
+    self.submit('out_queue_bytes',
+                sname,
                 str(server['out_queue_bytes']),
                 ip, port)
 
@@ -168,22 +180,27 @@ class KVProxyPlugin(object):
 
       :param pname: pool name
       :param pool:  json obj representing pool stats.
-      :param ip:      proxy ip address
-      :param port:    proxy port
+      :param ip:    proxy ip address
+      :param port:  proxy port
     """
-
-    # First, record top summaries for this pool.
-    self.submit('tcp_connections', 'client_connections', str(pool['client_connections']),
+    # Record top summaries for this pool.
+    self.submit('client_connections', pname,
+                str(pool['client_connections']),
                 ip, port)
-    self.submit('counter', 'client_err', str(pool['client_err']),
+    self.submit('client_err', pname,
+                str(pool['client_err']),
                 ip, port)
-    self.submit('counter', 'client_eof', str(pool['client_eof']),
+    self.submit('client_eof', pname,
+                str(pool['client_eof']),
                 ip, port)
-    self.submit('counter', 'server_ejects', str(pool['server_ejects']),
+    self.submit('server_ejects', pname,
+                str(pool['server_ejects']),
                 ip, port)
-    self.submit('counter', 'forward_error', str(pool['forward_error']),
+    self.submit('forward_error', pname,
+                str(pool['forward_error']),
                 ip, port)
-    self.submit('counter', 'fragments', str(pool['fragments']),
+    self.submit('fragments', pname,
+                str(pool['fragments']),
                 ip, port)
 
 
@@ -221,6 +238,7 @@ class KVProxyPlugin(object):
       Get actual data from proxy, pass them to Collectd.
 
     """
+    log_verbose('start one round of kvproxy collection')
     for i in range(len(self.ips)):
       ip = self.ips[i]
       port = self.ports[i]
@@ -239,9 +257,10 @@ class KVProxyPlugin(object):
         log_verbose('Error:: {}'.format(e))
 
 
+
 def main():
   ip = '192.168.0.38'
-  port = 22222
+  port = 21000
   proxy = KVProxyPlugin(ip, port)
   proxy.read_proxy_stats()
 

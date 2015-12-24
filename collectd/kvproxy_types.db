@@ -1,0 +1,22 @@
+client_connections  value:GAUGE:U:U
+client_err          value:GAUGE:0:U
+client_eof          value:GAUGE:0:U
+server_ejects       value:GAUGE:0:U
+forward_error       value:GAUGE:0:U
+fragments           value:GAUGE:0:U
+
+server_connections  value:GAUGE:U:U
+server_eof          value:GAUGE:0:U
+server_err          value:GAUGE:0:U
+
+triple              value1:COUNTER:0:U, value2:COUNTER:0:U, value3:COUNTER:0:U
+
+requests            value:COUNTER:0:U
+request_bytes       value:COUNTER:0:U
+responses           value:COUNTER:0:U
+response_bytes      value:COUNTER:0:U
+
+in_queue            value:GAUGE:0:U
+in_queue_bytes      value:GAUGE:0:U
+out_queue           value:GAUGE:0:U
+out_queue_bytes     value:GAUGE:0:U
