@@ -75,6 +75,8 @@ class KVProxyPlugin(object):
         if node.values[0]:
         #in ['true', 'True']:
           VERBOSE_LOGGING = True
+        else:
+          VERBOSE_LOGGING = False
       elif key == 'test':
         # if we are in test mode
         self.test = node.values[0]
@@ -140,19 +142,19 @@ class KVProxyPlugin(object):
                 sname,
                 str(server['server_err']),
                 ip, port)
-    self.submit('requests',
+    self.submit('req',
                 sname,
                 str(server['requests']),
                 ip, port)
-    self.submit('request_bytes',
+    self.submit('reqbytes',
                 sname,
                 str(server['request_bytes']),
                 ip, port)
-    self.submit('responses',
+    self.submit('resp',
                 sname,
                 str(server['responses']),
                 ip, port)
-    self.submit('response_bytes',
+    self.submit('respbytes',
                 sname,
                 str(server['response_bytes']),
                 ip, port)
@@ -185,22 +187,34 @@ class KVProxyPlugin(object):
     """
     # Record top summaries for this pool.
     self.submit('client_connections', pname,
-                str(pool['client_connections']),
+                pool['client_connections'],
                 ip, port)
     self.submit('client_err', pname,
-                str(pool['client_err']),
+                pool['client_err'],
                 ip, port)
     self.submit('client_eof', pname,
-                str(pool['client_eof']),
+                pool['client_eof'],
                 ip, port)
     self.submit('server_ejects', pname,
-                str(pool['server_ejects']),
+                pool['server_ejects'],
                 ip, port)
     self.submit('forward_error', pname,
-                str(pool['forward_error']),
+                pool['forward_error'],
                 ip, port)
     self.submit('fragments', pname,
-                str(pool['fragments']),
+                pool['fragments'],
+                ip, port)
+    self.submit('req', pname,
+                pool['total_requests'],
+                ip, port)
+    self.submit('reqbytes', pname,
+                pool['total_requests_bytes'],
+                ip, port)
+    self.submit('resp', pname,
+                pool['total_responses'],
+                ip, port)
+    self.submit('respbytes', pname,
+                pool['total_responses_bytes'],
                 ip, port)
 
 
@@ -259,8 +273,8 @@ class KVProxyPlugin(object):
 
 
 def main():
-  ip = '192.168.0.38'
-  port = 21000
+  ip = '192.168.0.158'
+  port = 31000
   proxy = KVProxyPlugin(ip, port)
   proxy.read_proxy_stats()
 

@@ -5,21 +5,16 @@ server_ejects       value:GAUGE:0:U
 forward_error       value:GAUGE:0:U
 fragments           value:GAUGE:0:U
 
+req         value:GAUGE:0:U
+reqbytes    value:GAUGE:0:U
+#requested          value:GAUGE:0:U
+#requested_bytes    value:GAUGE:0:U
+resp        value:GAUGE:0:U
+respbytes   value:GAUGE:0:U
+
 server_connections  value:GAUGE:U:U
 server_eof          value:GAUGE:0:U
 server_err          value:GAUGE:0:U
-
-
-triple              value1:COUNTER:0:U, value2:COUNTER:0:U, value3:COUNTER:0:U
-
-# "requests" is already defined.
-#requests            value:GAUGE:0:U
-request_bytes       value:GAUGE:0:U
-#requested            value:GAUGE:0:U
-#requested_bytes      value:GAUGE:0:U
-
-responses           value:GAUGE:0:U
-response_bytes      value:GAUGE:0:U
 
 in_queue            value:GAUGE:0:U
 in_queue_bytes      value:GAUGE:0:U
