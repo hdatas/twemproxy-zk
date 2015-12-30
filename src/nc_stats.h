@@ -30,6 +30,10 @@
     /* forwarder behavior */                                                                                        \
     ACTION( forward_error,          STATS_COUNTER,      "# times we encountered a forwarding error")                \
     ACTION( fragments,              STATS_COUNTER,      "# fragments created from a multi-vector request")          \
+    ACTION( total_requests,         STATS_COUNTER,      "# total requests of all servers")                          \
+    ACTION( total_requests_bytes,   STATS_COUNTER,      "# total requests bytes of all servers")                    \
+    ACTION( total_responses,        STATS_COUNTER,      "# total responses of all servers")                         \
+    ACTION( total_responses_bytes,  STATS_COUNTER,      "# total responses bytes of all servers")                   \
 
 #define STATS_SERVER_CODEC(ACTION)                                                                                  \
     /* server behavior */                                                                                           \

@@ -676,6 +676,44 @@ stats_aggregate_metric(struct array *dst, struct array *src)
 }
 
 static void
+stats_summarize_servers_to_pool(struct stats *st)
+{
+    uint32_t i, j;
+    for (i = 0; i < array_n(&st->sum); i++) {
+        struct stats_pool *stp = array_get(&st->sum, i);
+
+        log_debug(LOG_PVERB, "aggregate %d servers to pool: %s\n",
+                  array_n(&stp->server), stp->name.data);
+
+        struct stats_metric *total_rqsts = array_get(&stp->metric, 6);
+        struct stats_metric *total_rqsts_bytes = array_get(&stp->metric, 7);
+        struct stats_metric *total_resps = array_get(&stp->metric, 8);
+        struct stats_metric *total_resps_bytes = array_get(&stp->metric, 9);
+        total_rqsts->value.counter = 0;
+        total_rqsts_bytes->value.counter = 0;
+        total_resps->value.counter = 0;
+        total_resps_bytes->value.counter = 0;
+
+        for (j = 0; j < array_n(&stp->server); j++) {
+            struct stats_server *sts = array_get(&stp->server, j);
+            struct stats_metric *sm;
+
+            sm = array_get(&sts->metric, 5);
+            total_rqsts->value.counter += sm->value.counter;
+
+            sm = array_get(&sts->metric, 6);
+            total_rqsts_bytes->value.counter += sm->value.counter;
+
+            sm = array_get(&sts->metric, 7);
+            total_resps->value.counter += sm->value.counter;
+
+            sm = array_get(&sts->metric, 8);
+            total_resps_bytes->value.counter += sm->value.counter;
+        }
+    }
+}
+
+static void
 stats_aggregate(struct stats *st)
 {
     uint32_t i;
@@ -705,6 +743,9 @@ stats_aggregate(struct stats *st)
             stats_aggregate_metric(&sts2->metric, &sts1->metric);
         }
     }
+
+    // Summarize per-server counters to owning pool.
+    stats_summarize_servers_to_pool(st);
 
     st->aggregate = 0;
 }
