@@ -8,6 +8,7 @@ AM_CPPFLAGS += -I $(top_srcdir)/src/hashkit
 AM_CPPFLAGS += -I $(top_srcdir)/src/proto
 AM_CPPFLAGS += -I $(top_srcdir)/src/event
 AM_CPPFLAGS += -I $(top_srcdir)/src/parson
+AM_CPPFLAGS += -I $(top_srcdir)/src/hdr_histogram
 AM_CPPFLAGS += -I $(top_srcdir)/contrib/yaml-0.1.4/include
 
 AM_CFLAGS = -std=c99
@@ -32,7 +33,7 @@ AM_LDFLAGS += -lexecinfo
 endif
 AM_LDFLAGS += -L/usr/local/lib -lzookeeper_mt
 
-SUBDIRS = hashkit proto event parson
+SUBDIRS = hashkit proto event parson hdr_histogram
 
 sbin_PROGRAMS = nutcracker
 
@@ -62,4 +63,5 @@ nutcracker_LDADD = $(top_builddir)/src/hashkit/libhashkit.a
 nutcracker_LDADD += $(top_builddir)/src/proto/libproto.a
 nutcracker_LDADD += $(top_builddir)/src/event/libevent.a
 nutcracker_LDADD += $(top_builddir)/src/parson/libparson.a
+nutcracker_LDADD += $(top_builddir)/src/hdr_histogram/libhdrhistogram.a
 nutcracker_LDADD += $(top_builddir)/contrib/yaml-0.1.4/src/.libs/libyaml.a

@@ -209,6 +209,7 @@ AC_CONFIG_FILES([Makefile
                  src/hashkit/Makefile
                  src/proto/Makefile
                  src/parson/Makefile
+                 src/hdr_histogram/Makefile
                  src/event/Makefile])
 
 # Generate the "configure" script
