@@ -20,3 +20,10 @@ in_queue            value:GAUGE:0:U
 in_queue_bytes      value:GAUGE:0:U
 out_queue           value:GAUGE:0:U
 out_queue_bytes     value:GAUGE:0:U
+
+latency_min   value:GAUGE:0:U
+latency_max   value:GAUGE:0:U
+latency_p50   value:GAUGE:0:U
+latency_p90   value:GAUGE:0:U
+latency_p95   value:GAUGE:0:U
+latency_p99   value:GAUGE:0:U

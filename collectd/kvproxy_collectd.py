@@ -216,6 +216,24 @@ class KVProxyPlugin(object):
     self.submit('respbytes', pname,
                 pool['total_responses_bytes'],
                 ip, port)
+    self.submit('latency_min', pname,
+                pool['latency_min'],
+                ip, port)
+    self.submit('latency_max', pname,
+                pool['latency_max'],
+                ip, port)
+    self.submit('latency_p50', pname,
+                pool['latency_p50'],
+                ip, port)
+    self.submit('latency_p90', pname,
+                pool['latency_p90'],
+                ip, port)
+    self.submit('latency_p95', pname,
+                pool['latency_p95'],
+                ip, port)
+    self.submit('latency_p99', pname,
+                pool['latency_p99'],
+                ip, port)
 
 
   def send_stats_to_collectd(self, content, ip, port):
