@@ -93,7 +93,7 @@ class KVProxyPlugin(object):
     """
       dispatch a msg to collectd.
     """
-    plugin_instance = '{}_{}'.format(server, port)
+    plugin_instance = '{}:{}'.format(server, port)
 
     v = collectd.Values()
     v.plugin = self.plugin_name
