@@ -268,9 +268,6 @@ rsp_forward(struct context *ctx, struct conn *s_conn, struct msg *msg)
         if (status != NC_OK) {
             c_conn->err = errno;
         }
-        // Count overall latency of this request.
-        uint64_t lat_us = msg->timestamp - pmsg->timestamp;
-        hdr_record_value(ctx->histogram, (int64_t)lat_us);
     }
 
     rsp_forward_stats(ctx, s_conn->owner, msg, msgsize);

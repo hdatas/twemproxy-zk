@@ -108,6 +108,17 @@ req_put(struct msg *msg)
 
     req_log(msg);
 
+    // Record the request's latency
+    if (msg->start_ts > 0) {
+      struct conn *c_conn = (struct conn*)msg->owner;
+      struct server_pool *sp = (struct server_pool*)c_conn->owner;
+      struct context *ctx = sp->ctx;
+      int64_t lat_us = nc_usec_now() - msg->start_ts;
+      pthread_mutex_lock(&ctx->histo_lock);
+      hdr_record_value(ctx->histogram, lat_us);
+      pthread_mutex_unlock(&ctx->histo_lock);
+    }
+
     pmsg = msg->peer;
     if (pmsg != NULL) {
         ASSERT(!pmsg->request && pmsg->peer == msg);

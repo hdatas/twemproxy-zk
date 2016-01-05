@@ -88,6 +88,7 @@ core_ctx_create(struct instance *nci)
     int64_t highest = 1000000000;
     int sig_digits = 3;
     hdr_init(lowest, highest, sig_digits, &ctx->histogram);
+    pthread_mutex_init(&ctx->histo_lock, NULL);
 
     /* initialize server pool from configuration */
     //status = server_pool_init(&ctx->pool, &ctx->cf->pool, ctx);

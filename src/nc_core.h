@@ -139,6 +139,7 @@ struct context {
 
     zhandle_t       *zkh;           // zookeeper handle
 
+    pthread_mutex_t       histo_lock;
     struct hdr_histogram *histogram;// HDR histogram to track percentile latency.
 };
 
