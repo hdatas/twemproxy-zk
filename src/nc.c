@@ -596,12 +596,6 @@ main(int argc, char **argv)
         exit(1);
     }
 
-    if (nci.proxy_ip == NULL) {
-        log_stderr("must provide proxy_ip and proxy_port" CRLF);
-        nc_show_usage();
-        exit(1);
-    }
-
     if (show_version) {
         log_stderr("This is nutcracker-%s" CRLF, NC_VERSION_STRING);
         if (show_help) {
@@ -613,6 +607,12 @@ main(int argc, char **argv)
         }
 
         exit(0);
+    }
+
+    if (nci.proxy_ip == NULL) {
+        log_stderr("must provide proxy_ip and proxy_port" CRLF);
+        nc_show_usage();
+        exit(1);
     }
 
     if (test_conf) {

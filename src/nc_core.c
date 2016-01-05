@@ -83,6 +83,12 @@ core_ctx_create(struct instance *nci)
       return NULL;
     }
 
+    // Init hdr-histogram
+    int64_t lowest = 1;
+    int64_t highest = 1000000000;
+    int sig_digits = 3;
+    hdr_init(lowest, highest, sig_digits, &ctx->histogram);
+
     /* initialize server pool from configuration */
     //status = server_pool_init(&ctx->pool, &ctx->cf->pool, ctx);
     status = server_pool_init(&ctx->pool, &ctx->json_cf->pool, ctx);
@@ -113,6 +119,7 @@ core_ctx_create(struct instance *nci)
         nc_free(ctx);
         return NULL;
     }
+    ctx->stats->context = ctx;
 
     /* initialize event handling for client, proxy and server */
     ctx->evb = event_base_create(EVENT_SIZE, &core_core);

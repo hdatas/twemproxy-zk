@@ -29,6 +29,9 @@ req_get(struct conn *conn)
     if (msg == NULL) {
         conn->err = errno;
     }
+
+    // Record time whne this msg is created.
+    msg->timestamp = nc_now_us();
     return msg;
 }
 

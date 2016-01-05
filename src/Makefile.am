@@ -22,6 +22,7 @@ AM_CFLAGS += -Wno-unused-parameter -Wno-unused-value
 AM_CFLAGS += -Wconversion -Wsign-compare
 AM_CFLAGS += -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wmissing-declarations
 AM_CFLAGS += -I/usr/local/include/zookeeper
+AM_MAKEFLAGS = "CFLAGS = -I../../src/hdr_histogram"
 
 AM_LDFLAGS =
 AM_LDFLAGS += -lm -lpthread -rdynamic

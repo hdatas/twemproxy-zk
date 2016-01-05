@@ -714,6 +714,35 @@ stats_summarize_servers_to_pool(struct stats *st)
 }
 
 static void
+stats_summarize_latency(struct stats *st)
+{
+    struct context *ctx = st->context;
+    assert(array_n(&st->sum) == 1);
+    for (int i = 0; i < array_n(&st->sum); i++) {
+        struct stats_pool *stp = array_get(&st->sum, i);
+        log_error("summarize latency for pool %s\n", stp->name.data);
+
+        struct stats_metric *lat_min = array_get(&stp->metric, 10);
+        struct stats_metric *lat_max = array_get(&stp->metric, 11);
+        struct stats_metric *lat_p50 = array_get(&stp->metric, 12);
+        struct stats_metric *lat_p90 = array_get(&stp->metric, 13);
+        struct stats_metric *lat_p95 = array_get(&stp->metric, 14);
+        struct stats_metric *lat_p99 = array_get(&stp->metric, 15);
+
+        lat_min->value.counter = hdr_min(ctx->histogram);
+        lat_max->value.counter = hdr_max(ctx->histogram);
+        lat_p50->value.counter = hdr_value_at_percentile(ctx->histogram, 50);
+        lat_p90->value.counter = hdr_value_at_percentile(ctx->histogram, 90);
+        lat_p95->value.counter = hdr_value_at_percentile(ctx->histogram, 95);
+        lat_p99->value.counter = hdr_value_at_percentile(ctx->histogram, 99);
+    }
+
+    // After recording the metrics, clear histogram record, and start tracking
+    // for the next reporting results.
+    hdr_reset(ctx->histogram);
+}
+
+static void
 stats_aggregate(struct stats *st)
 {
     uint32_t i;
@@ -816,6 +845,9 @@ stats_send_rsp(struct stats *st)
     rstatus_t status;
     ssize_t n;
     int sd;
+
+    // Record percentile latency.
+    stats_summarize_latency(st);
 
     status = stats_make_rsp(st);
     if (status != NC_OK) {

@@ -34,6 +34,12 @@
     ACTION( total_requests_bytes,   STATS_COUNTER,      "# total requests bytes of all servers")                    \
     ACTION( total_responses,        STATS_COUNTER,      "# total responses of all servers")                         \
     ACTION( total_responses_bytes,  STATS_COUNTER,      "# total responses bytes of all servers")                   \
+    ACTION( latency_min,            STATS_COUNTER,      "min latency (us) of all requests")                         \
+    ACTION( latency_max,            STATS_COUNTER,      "max latency (us) of all requests")                         \
+    ACTION( latency_p50,            STATS_COUNTER,      "50\% latency (us) of all requests")                        \
+    ACTION( latency_p90,            STATS_COUNTER,      "90\% latency (us) of all requests")                        \
+    ACTION( latency_p95,            STATS_COUNTER,      "95\% latency (us) of all requests")                        \
+    ACTION( latency_p99,            STATS_COUNTER,      "99\% latency (us) of all requests")                        \
 
 #define STATS_SERVER_CODEC(ACTION)                                                                                  \
     /* server behavior */                                                                                           \
@@ -118,6 +124,8 @@ struct stats {
 
     volatile int        aggregate;       /* shadow (b) aggregate? */
     volatile int        updated;         /* current (a) updated? */
+
+    struct context     *context;         /* owning context */
 };
 
 #define DEFINE_ACTION(_name, _type, _desc) STATS_POOL_##_name,

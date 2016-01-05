@@ -249,6 +249,8 @@ struct msg {
     uint64_t             frag_id;         /* id of fragmented message */
     struct msg           **frag_seq;      /* sequence of fragment message, map from keys to fragments*/
 
+    uint64_t             timestamp;       // when the msg is created, in micro-seconds
+
     err_t                err;             /* errno on error? */
     unsigned             error:1;         /* error? */
     unsigned             ferror:1;        /* one or more fragments are in error? */

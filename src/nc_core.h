@@ -118,6 +118,7 @@ struct event_base;
 #include <nc_connection.h>
 #include <nc_server.h>
 #include <zkutil.h>
+#include <hdr_histogram.h>
 
 struct context {
     uint32_t           id;          /* unique context id */
@@ -137,6 +138,8 @@ struct context {
     struct array       pool;        // server_pool[] with shards
 
     zhandle_t       *zkh;           // zookeeper handle
+
+    struct hdr_histogram *histogram;// HDR histogram to track percentile latency.
 };
 
 
