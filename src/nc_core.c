@@ -74,12 +74,17 @@ core_ctx_create(struct instance *nci)
     }*/
 
     // We only use the pool whose proxy list includes "proxy_addr".
+    ctx->owner_inst = nci;
+    ctx->json_cf = NULL;
     if (nci->zk_servers) {
-      ctx->json_cf = conf_json_create_from_zk(nci->zk_servers, nci, ctx);
+      //ctx->json_cf = conf_json_create_from_zk(nci->zk_servers, nci, ctx);
+      ctx->json_cf = get_pool_conf_from_zk(nci->zk_servers, ctx);
     } else if (nci->conf_filename) {
       ctx->json_cf = conf_json_create(nci->conf_filename, nci);
-    } else {
+    }
+    if (!ctx->json_cf) {
       log_debug(LOG_NOTICE, "no conf available");
+      nc_free(ctx);
       return NULL;
     }
 
@@ -91,7 +96,6 @@ core_ctx_create(struct instance *nci)
     pthread_mutex_init(&ctx->histo_lock, NULL);
 
     /* initialize server pool from configuration */
-    //status = server_pool_init(&ctx->pool, &ctx->cf->pool, ctx);
     status = server_pool_init(&ctx->pool, &ctx->json_cf->pool, ctx);
     if (status != NC_OK) {
         conf_destroy(ctx->cf);

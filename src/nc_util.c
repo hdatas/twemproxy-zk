@@ -655,3 +655,16 @@ nc_now_us()
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000);
 }
+
+int
+nc_write_file(char *filepath, char *buf, int buf_len)
+{
+    FILE *fh = fopen(filepath, "w");
+    if (!fh) {
+      log_error("failed to open file for write: %s\n", filepath);
+      return -1;
+    }
+    int ret = (int)fwrite(buf, 1, buf_len, fh);
+    fclose(fh);
+    return ret;
+}

@@ -50,6 +50,12 @@ static rstatus_t string_to_conf_server(const uint8_t* saddr,
 static rstatus_t conf_shards_to_server_shards(struct array* cf_shards,
                                               struct array* srv_shards,
                                               struct server_pool* sp);
+static rstatus_t parse_pool_conf_file(struct conf *cf, char *pool_name);
+static rstatus_t conf_json_to_conf_pool(JSON_Object *pobj,
+                                        struct conf_pool *pool,
+                                        char *pool_name);
+static bool sanity_check_pool_conf_json(JSON_Object *pobj);
+static bool sanity_check_shard_conf_json(JSON_Object *sobj);
 
 static struct command conf_commands[] = {
     { string("listen"),
@@ -1917,7 +1923,7 @@ conf_json_pre_validate(struct conf *cf)
                    cf->fname);
         return NC_ERROR;
     }
-
+    json_value_free(root_value);
 
     return NC_OK;
 }
@@ -2062,10 +2068,7 @@ conf_json_init_pool(JSON_Object* obj,
 static rstatus_t
 conf_json_parse(struct conf *cf, struct instance *nci)
 {
-    rstatus_t status;
-
-    //ASSERT(cf->sound && !cf->parsed);
-    //ASSERT(array_n(&cf->arg) == 0);
+    rstatus_t status = NC_OK;
 
     JSON_Value *root_value = json_parse_file_with_comments(cf->fname);
     ASSERT(root_value != NULL);
@@ -2098,10 +2101,12 @@ conf_json_parse(struct conf *cf, struct instance *nci)
         }
         pool->valid = 1;
     }
-    status = NC_OK;
+    json_value_free(root_value);
 
     return status;
 }
+
+
 
 static void
 conf_json_dump(struct conf *cf)
@@ -2152,6 +2157,8 @@ conf_json_dump(struct conf *cf)
 struct conf *
 conf_json_create_from_zk(char *zkservers, struct instance* nci, struct context *ctx)
 {
+    int max_path = 200;
+    char zkpath[max_path];
     // Connect to ZK, grab conf, save to a local file.
     ctx->zkh = ZKConnect(zkservers);
     if (!ctx->zkh) {
@@ -2160,14 +2167,15 @@ conf_json_create_from_zk(char *zkservers, struct instance* nci, struct context *
     }
 
     // Read conf from zk, save to local file.
+    // This conf contains all info for a particular pool.
     int buflen = 64000;
     char buf[buflen];
     int sync = 1;
     int watch = 0;
-    int conf_len = ZKGet(ctx->zkh, nci->zk_config, buf, buflen, watch, sync);
+    snprintf(zkpath, max_path, "%s/proxy/%s", ZK_BASE, nci->pool_name);
+    int conf_len = ZKGet(ctx->zkh, zkpath, buf, buflen, watch, sync);
     if (conf_len <= 0) {
-      log_error("read conf from zk: %s, ret %d",
-                CONF_DEFAULT_CONF_ZNODE, conf_len);
+      log_error("read conf from zk: %s, ret %d", zkpath, conf_len);
       ZKClose(ctx->zkh);
       ctx->zkh = NULL;
       return NULL;
@@ -2176,9 +2184,7 @@ conf_json_create_from_zk(char *zkservers, struct instance* nci, struct context *
     char fname[500];
     sprintf(fname, "%s-proxy-%s-%d",
             CONF_DEFAULT_FILE_SAVE_PATH, nci->proxy_ip, nci->proxy_port);
-    FILE *fh = fopen(fname, "w");
-    fwrite(buf, 1, conf_len, fh);
-    fclose(fh);
+    nc_write_file(fname, buf, conf_len);
 
     struct conf *cf;
     cf = conf_json_create(fname, nci);
@@ -2187,6 +2193,7 @@ conf_json_create_from_zk(char *zkservers, struct instance* nci, struct context *
     }
 
     cf->zk_servers = zkservers;
+    // cf's "fname" is not needed anywhere else.
     cf->fname = NULL;
 
     return cf;
@@ -2391,10 +2398,9 @@ conf_shards_to_server_shards(struct array* cf_shards,
         srv->owner_shard = srv_sd;
 
         srv_sd->master = srv;
-        array_init(&srv_sd->slaves,
-                   array_n(&conf_sd->slaves),
-                   sizeof(struct server*));
+        array_init(&srv_sd->slaves, 4, sizeof(struct server*));
 
+        // During init, a shard may have no slave online.
         for (uint32_t j = 0; j < array_n(&conf_sd->slaves); j++) {
             conf_srv = array_get(&conf_sd->slaves, j);
             srv = array_push(&sp->server);
@@ -2415,4 +2421,296 @@ conf_shards_to_server_shards(struct array* cf_shards,
     }
 
     return rv;
+}
+
+// Read a pool's conf from zk, and init a "conf" struct.
+struct conf*
+get_pool_conf_from_zk(char* zkservers, struct context *ctx)
+{
+  struct instance *inst = ctx->owner_inst;
+  char *pool_name = inst->pool_name;
+
+  if (ctx->zkh == NULL) {
+    ctx->zkh = ZKConnect(zkservers);
+    if (!ctx->zkh) {
+      log_error("cannot connect to zk %s", zkservers);
+      return NULL;
+    }
+  }
+
+  int max_path = 500;
+  char path[max_path];
+  snprintf(path, max_path, "%s/%s", inst->zk_config_root, pool_name);
+
+  // Connect to ZK, grab a pool's conf, save to a local file.
+  // This conf contains all info for a particular pool.
+  int buflen = 10000;
+  char buf[buflen];
+  int sync = 1;
+  int watch = 0;
+  int conf_len = ZKGet(ctx->zkh, path, buf, buflen, watch, sync);
+  if (conf_len <= 0 || conf_len >= buflen) {
+    log_error("pool \"%s \"conf incorrect: %s, ret %d",
+              pool_name, path, conf_len);
+    ZKClose(ctx->zkh);
+    ctx->zkh = NULL;
+    return NULL;
+  }
+
+  // Now, save pool's conf to file.
+  sprintf(path, "%s-pool-%s", CONF_DEFAULT_FILE_SAVE_PATH, pool_name);
+  nc_write_file(path, buf, conf_len);
+
+  // Read from this pool's config file, init a conf object.
+  struct conf *cf;
+  cf = create_pool_conf_from_file(path, ctx);
+  if (cf == NULL) {
+    return NULL;
+  }
+
+  // After conf is created, correct some options.
+  rstatus_t status = conf_json_post_validate(cf);
+  if (status != NC_OK) {
+    conf_destroy(cf);
+    return NULL;
+  }
+
+  cf->zk_servers = zkservers;
+  cf->valid = 1;
+  conf_json_dump(cf);
+  conf_dump(cf);
+  // the "fname" is not used anywhere else. Set to NULL.
+  cf->fname = NULL;
+
+  return cf;
+}
+
+
+struct conf*
+create_pool_conf_from_file(char *filepath, struct context *ctx)
+{
+  struct instance *inst = ctx->owner_inst;
+
+  rstatus_t status = NC_OK;
+  struct conf *cf = conf_open(filepath);
+  if (cf == NULL) {
+      return NULL;
+  }
+  if (cf->fh) {
+    fclose(cf->fh);
+    cf->fh = NULL;
+  }
+  array_null(&cf->arg);
+
+  status = parse_pool_conf_file(cf, inst->pool_name);
+  if (status != NC_OK) {
+    goto error;
+  }
+
+  // Init proxy listening address.
+  // Each context has only one proxy for a given pool.
+  int num_pools = (int)array_n(&cf->pool);
+  for (int i = 0; i < num_pools; i++) {
+    struct conf_pool* pool = (struct conf_pool*) array_get(&cf->pool, i);
+    int str_len = 200;
+    char proxy_str[str_len];
+    snprintf(proxy_str, (size_t)str_len, "%s:%d",
+             inst->proxy_ip, inst->proxy_port);
+    struct conf_server* cp = (struct conf_server*)array_push(&pool->proxies);
+    string_to_conf_server((const uint8_t*)proxy_str, cp);
+    conf_server_to_conf_listen(cp, &pool->listen);
+  }
+
+  return cf;
+
+error:
+  log_stderr("configuration file '%s' JSON syntax invalid", filepath);
+  conf_destroy(cf);
+  return NULL;
+}
+
+// Parse a pool's conf file, and populate a conf object.
+static rstatus_t
+parse_pool_conf_file(struct conf *cf, char *pool_name)
+{
+    rstatus_t status = NC_OK;
+
+    // Open conf file (a json file), and perform sanity check.
+    JSON_Value *root_value = json_parse_file_with_comments(cf->fname);
+    ASSERT(root_value != NULL);
+    if (JSONObject != json_type(root_value)) {
+      log_error("config file error format : %s", cf->fname);
+      return NC_ERROR;
+    }
+
+    JSON_Object* pool_obj = json_value_get_object(root_value);
+    if (!sanity_check_pool_conf_json(pool_obj)) {
+      log_error("config file invalid content : %s", cf->fname);
+      return NC_ERROR;
+    }
+
+    // Create a conf_pool object.
+    struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
+    if (pool == NULL) {
+      return NC_ENOMEM;
+    }
+    memset(pool, 0, sizeof(struct conf_pool));
+
+    // Populate conf_pool obj from the json obj.
+    status = conf_json_to_conf_pool(pool_obj, pool, pool_name);
+    if (status != NC_OK) {
+      array_pop(&cf->pool);
+    } else {
+      pool->valid = 1;
+    }
+
+    json_value_free(root_value);
+    return status;
+}
+
+// Convert the configuration in a json obj to a conf_pool obj.
+static rstatus_t
+conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool, char *pool_name)
+{
+  rstatus_t status;
+  struct string plname;
+
+  string_init(&plname);
+  status = string_copy(&plname,
+                       (uint8_t*)pool_name,
+                       (uint32_t)strlen(pool_name));
+
+  // Init the pool to default value.
+  conf_pool_init(pool, &plname);
+  string_deinit(&plname);
+
+  // Init the conf_pool options.
+  pool->redis = 1;
+  pool->redis_db = 0;
+  pool->hash = HASH_MURMUR;
+
+  const char* name = json_object_get_string(pobj, "name");
+  const char* id = json_object_get_string(pobj, "id");
+
+  // Get this pool's hash value range.
+  pool->shard_range_min = (uint32_t)atoi(json_object_get_string(pobj, "pool_begin"));
+  pool->shard_range_max = (uint32_t)atoi(json_object_get_string(pobj, "pool_end"));
+
+
+  // Init the list of proxies.
+  status = array_init(&pool->proxies, CONF_DEFAULT_PROXIES,
+                      sizeof(struct conf_server));
+
+  // Init shards.
+  status = array_init(&pool->shards, CONF_DEFAULT_SHARDS,
+                      sizeof(struct conf_shard));
+  JSON_Array* jshards = json_object_get_array(pobj, "shards");
+  size_t nshards = json_array_get_count(jshards);
+
+  for (size_t i = 0; i < nshards; i++) {
+    // Add a shard into pool.
+    struct conf_shard* cfshard = (struct conf_shard*) array_push(&pool->shards);
+    if (cfshard == NULL) {
+      status = NC_ENOMEM;
+      break;
+    }
+    status = array_init(&cfshard->slaves, CONF_DEFAULT_SLAVES,
+                            sizeof(struct conf_server));
+    if (status != NC_OK) {
+      return NC_ENOMEM;
+    }
+
+    JSON_Object* js = json_array_get_object(jshards, i);
+    cfshard->range_begin = (uint32_t)atoi(json_object_get_string(js, "shard_begin"));
+    cfshard->range_end = (uint32_t)atoi(json_object_get_string(js, "shard_end"));
+
+    // Init the master target's conf
+    const char* jsmaster = json_object_get_string(js, "master_target");
+    string_to_conf_server((const uint8_t*)jsmaster, &cfshard->master);
+
+    // Init slave targets.
+    JSON_Array* jsslaves = json_object_get_array(js, "slave_target");
+    size_t nslaves = json_array_get_count(jsslaves);
+    if (nslaves == 0) continue;
+
+    for (size_t s = 0; s < nslaves; s++) {
+      const char* slvstr = json_array_get_string(jsslaves, s);
+      struct conf_server* slv = array_push(&cfshard->slaves);
+      string_to_conf_server((const uint8_t*)slvstr, slv);
+    }
+  }
+
+  return status;
+
+}
+
+
+// Check if a pool json obj is valid or not.
+// a pool's mandatory fields:
+// {
+//   "name"  : name of this pool
+//   "id"    : pool id
+//   "pool_begin" : key's hash range beginning
+//   "pool_end"   : key's hash range ending
+//   "shards"     : a list of shards.
+// }
+//
+// Every shard must contain:
+//   "shard_begin", "shard_end":  hash value range covered by this shard
+//   "name" : shard name
+//   "id"   : shard id
+//   "pool_name", "pool_id":  owner pool's name/id
+//   "master_target"  :  address ("ip:port") of master target
+//   "slave_target"   :  list of slaves. Each elem is an "ip:port" string.
+static bool
+sanity_check_pool_conf_json(JSON_Object *pobj)
+{
+  if (json_object_get_string(pobj, "name") == NULL) {
+    return false;
+  }
+  if (json_object_get_string(pobj, "id") == NULL) {
+    return false;
+  }
+  if (json_object_get_string(pobj, "pool_begin") == NULL) {
+    return false;
+  }
+  if (json_object_get_string(pobj, "pool_end") == NULL) {
+    return false;
+  }
+
+  // Sanity check shards in the pool.
+  JSON_Array* jshards = json_object_get_array(pobj, "shards");
+  size_t nshards = json_array_get_count(jshards);
+  if (nshards <= 0) {
+    return false;
+  }
+
+  for (size_t i = 0; i < nshards; i++) {
+    JSON_Object* js = json_array_get_object(jshards, i);
+    if (!sanity_check_shard_conf_json(js)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Check if a shard json obj is valid or not.
+static bool
+sanity_check_shard_conf_json(JSON_Object *sobj)
+{
+  if (json_object_get_string(sobj, "shard_begin") == NULL) {
+    return false;
+  }
+  if (json_object_get_string(sobj, "shard_end") == NULL) {
+    return false;
+  }
+  if (json_object_get_string(sobj, "master_target") == NULL) {
+    return false;
+  }
+  if (json_object_get_array(sobj, "slave_target") == NULL) {
+    return false;
+  }
+
+  return true;
 }

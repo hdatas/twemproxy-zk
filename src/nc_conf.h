@@ -62,8 +62,8 @@
 // zookeeper base path
 #define ZK_BASE                              "/distkv"
 
-// Global conf is stored at this znode.
-#define CONF_DEFAULT_CONF_ZNODE              "/distkv/global-conf"
+// Proxy needs a conf to bootstrap. Each pool has one conf file.
+#define CONF_DEFAULT_CONF_ZNODE              "/distkv/proxy"
 
 // At init, grab conf from zookeeper and save to this location.
 #define CONF_DEFAULT_FILE_SAVE_PATH          "/tmp/nc-conf"
@@ -169,6 +169,7 @@ struct conf *conf_json_create(char *filename, struct instance *nci);
 struct conf *conf_json_create_from_zk(char *zkservers, struct instance *nci,
     struct context *ctx);
 void conf_destroy(struct conf *cf);
+struct conf *create_pool_conf_from_file(char *filepath, struct context *ctx);
 
 
 #endif

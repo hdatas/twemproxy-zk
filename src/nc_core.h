@@ -120,6 +120,8 @@ struct event_base;
 #include <zkutil.h>
 #include <hdr_histogram.h>
 
+struct instance;
+
 struct context {
     uint32_t           id;          /* unique context id */
     struct conf        *cf;         /* configuration */
@@ -141,6 +143,9 @@ struct context {
 
     pthread_mutex_t       histo_lock;
     struct hdr_histogram *histogram;// HDR histogram to track percentile latency.
+
+    struct instance   *owner_inst;  // owner instance of this context.
+    //char               *pool_name;  // this context maps to this backend pool.
 };
 
 
@@ -150,7 +155,7 @@ struct instance {
     char            *log_filename;               /* log filename */
     char            *conf_filename;              /* configuration filename */
     char            *zk_servers;                 /* zookeeper hosts */
-    char            *zk_config;                  /* config path on zookeeper */
+    char            *zk_config_root;             /* config path on zookeeper */
     uint16_t        stats_port;                  /* stats monitoring port */
     int             stats_interval;              /* stats aggregation interval */
     char            *stats_addr;                 /* stats monitoring addr */
@@ -162,6 +167,8 @@ struct instance {
 
     char            *proxy_ip;                   // proxy listen address
     uint16_t        proxy_port;                  // proxy listen port
+
+    char            *pool_name;                  // this instance maps to this backend pool.
 };
 
 struct context *core_start(struct instance *nci);

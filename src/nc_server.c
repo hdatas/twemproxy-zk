@@ -1160,7 +1160,7 @@ server_pool_init(struct array *server_pool, struct array *conf_pool,
     ASSERT(array_n(server_pool) == npool);
 
     // Set a watcher to each shard's master server status.
-    set_watch_on_master_status(server_pool, ctx);
+    //set_watch_on_master_status(server_pool, ctx);
 
     /* set ctx as the server pool owner */
     status = array_each(server_pool, server_pool_each_set_owner, ctx);

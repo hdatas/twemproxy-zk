@@ -214,4 +214,6 @@ char *nc_unresolve_peer_desc(int sd);
 char *nc_unresolve_desc(int sd);
 
 uint64_t nc_now_us(void);
+int nc_write_file(char *filepath, char *buf, int buf_len);
+
 #endif
