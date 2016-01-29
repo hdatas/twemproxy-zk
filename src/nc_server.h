@@ -166,5 +166,10 @@ rstatus_t server_pool_preconnect(struct context *ctx);
 void server_pool_disconnect(struct context *ctx);
 rstatus_t server_pool_init(struct array *server_pool, struct array *conf_pool, struct context *ctx);
 void server_pool_deinit(struct array *server_pool);
+struct server *AddServerFromAddressString(struct shard *sd, char *saddr);
+void add_server_to_stats(struct server *srv, struct server_pool *pool);
+void dump_server_pool(struct server_pool *sp);
+void dump_shard(struct shard *sd);
+void dump_server(struct server *srv);
 
 #endif

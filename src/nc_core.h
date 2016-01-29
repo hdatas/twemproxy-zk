@@ -145,7 +145,6 @@ struct context {
     struct hdr_histogram *histogram;// HDR histogram to track percentile latency.
 
     struct instance   *owner_inst;  // owner instance of this context.
-    //char               *pool_name;  // this context maps to this backend pool.
 };
 
 

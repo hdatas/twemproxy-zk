@@ -94,6 +94,8 @@ struct conf_shard {
 
     struct conf_server master;  // conf_server of master
     struct array  slaves;       // conf_server[] of all slaves
+
+    char status[32];            // status string.
 };
 
 struct conf_pool {
@@ -171,5 +173,6 @@ struct conf *conf_json_create_from_zk(char *zkservers, struct instance *nci,
 void conf_destroy(struct conf *cf);
 struct conf *create_pool_conf_from_file(char *filepath, struct context *ctx);
 
+struct conf *get_pool_conf_from_zk(char* zkservers, struct context *ctx);
 
 #endif

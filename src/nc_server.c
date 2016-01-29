@@ -783,6 +783,9 @@ server_pool_conn(struct context *ctx, struct server_pool *pool, uint8_t *key,
     ASSERT(sd != NULL);
     // always direct traffic to master.
     server = sd->master;
+    if (!server) {
+      return NULL;
+    }
     /////////////////
 
     /* pick a connection to a given server */
@@ -912,7 +915,7 @@ server_pool_each_run(void *elem, void *data)
 // Add a server to the given shard.
 //
 // "saddr" is "ip:port" string representing the new server address.
-static struct server*
+struct server*
 AddServerFromAddressString(struct shard *sd, char *saddr)
 {
     // Parse the "ip:port" string.
@@ -964,6 +967,23 @@ AddServerFromAddressString(struct shard *sd, char *saddr)
     return srv;
 }
 
+// When a new "struct server" is added to a pool,
+// the stats_pool should be updated to include
+// an entry for this new server.
+void
+add_server_to_stats(struct server *srv, struct server_pool *pool)
+{
+  struct context *ctx = pool->ctx;
+
+  struct stats_pool *stp;
+  stp = array_get(&ctx->stats->current, pool->idx);
+  add_server_to_stats_pool(stp, srv);
+  stp = array_get(&ctx->stats->shadow, pool->idx);
+  add_server_to_stats_pool(stp, srv);
+  stp = array_get(&ctx->stats->sum, pool->idx);
+  add_server_to_stats_pool(stp, srv);
+}
+
 // a shard's master address has changed.
 static void
 MasterAddressWatcher(zhandle_t *zkh,
@@ -999,8 +1019,10 @@ MasterAddressWatcher(zhandle_t *zkh,
 
               // Master address has changed. Switch to a new master.
               struct server *srv = AddServerFromAddressString(srv_sd, buf);
+              add_server_to_stats(srv, pool);
 
               // Add a corresponding stats_server.
+              /*
               struct stats_pool *stp;
               stp = array_get(&pool_ctx->stats->current, pool_idx);
               add_server_to_stats_pool(stp, srv);
@@ -1008,6 +1030,7 @@ MasterAddressWatcher(zhandle_t *zkh,
               add_server_to_stats_pool(stp, srv);
               stp = array_get(&pool_ctx->stats->sum, pool_idx);
               add_server_to_stats_pool(stp, srv);
+              */
 
               // TODO: should use a lock to protect ?
 
@@ -1219,3 +1242,52 @@ server_pool_deinit(struct array *server_pool)
     log_debug(LOG_DEBUG, "deinit %"PRIu32" pools", npool);
 }
 
+void
+dump_server(struct server *srv)
+{
+  log_warn("server %s (idx %d)",
+           (char*)srv->name.data, srv->idx);
+}
+
+void
+dump_server_shard(struct shard *sd)
+{
+  struct server *master = sd->master;
+  log_warn("shard %d [%d : %d]: have %d master, %d slaves, "
+           "can-read %d, can-write %d",
+           sd->idx, sd->range_begin, sd->range_end,
+           master ? 1 : 0,
+           array_n(&sd->slaves),
+           sd->can_read,
+           sd->can_write);
+  if (master) {
+    log_warn("master :");
+    dump_server(master);
+  }
+
+  for (uint32_t i = 0; i < array_n(&sd->slaves); i++) {
+    log_warn("slave %d:", i);
+    dump_server(*(struct server**)array_get(&sd->slaves, i));
+  }
+}
+
+void
+dump_server_pool(struct server_pool *sp)
+{
+  log_warn("");
+  log_warn("pool %s (idx %d), have %d shards, %d servers",
+           (char*)sp->name.data, sp->idx,
+           array_n(&sp->shards), array_n(&sp->server));
+  log_warn("proxy addr %s, shard range [%d : %d]",
+           (char*)sp->addrstr.data,
+           sp->shard_range_min,
+           sp->shard_range_max);
+
+  for (uint32_t i = 0; i < array_n(&sp->shards); i++) {
+    log_warn("pool \"%s\" shard %d ::", (char*)sp->name.data, i);
+    dump_server_shard((struct shard*)array_get(&sp->shards, i));
+  }
+
+  log_warn("");
+
+}
