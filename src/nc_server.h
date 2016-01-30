@@ -145,6 +145,8 @@ struct server_pool {
     uint32_t           shard_range_min;      // [min ~ max] value of key hash, inclusive.
     uint32_t           shard_range_max;
     struct array       shards;               // shard[] in this pool
+
+    pthread_mutex_t    lock;
 };
 
 void server_ref(struct conn *conn, void *owner);

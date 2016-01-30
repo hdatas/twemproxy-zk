@@ -55,7 +55,7 @@
 #define CONF_DEFAULT_AUTO_EJECT_HOSTS        false
 #define CONF_DEFAULT_SERVER_RETRY_TIMEOUT    30 * 1000      /* in msec */
 #define CONF_DEFAULT_SERVER_FAILURE_LIMIT    2
-#define CONF_DEFAULT_SERVER_CONNECTIONS      1
+#define CONF_DEFAULT_SERVER_CONNECTIONS      2
 #define CONF_DEFAULT_KETAMA_PORT             11211
 #define CONF_DEFAULT_TCPKEEPALIVE            false
 
@@ -174,5 +174,6 @@ void conf_destroy(struct conf *cf);
 struct conf *create_pool_conf_from_file(char *filepath, struct context *ctx);
 
 struct conf *get_pool_conf_from_zk(char* zkservers, struct context *ctx);
+rstatus_t add_watcher_on_conf_pool(struct context *ctx);
 
 #endif

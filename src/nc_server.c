@@ -651,7 +651,11 @@ server_pool_idx(struct server_pool *pool, uint8_t *key, uint32_t keylen)
 {
     uint32_t hash, idx;
 
-    ASSERT(array_n(&pool->server) != 0);
+    ///////////////////
+    // At init, a shard's master/slave may be empty, so we allow a pool without
+    // any servers. Later on ZK update will add servers.
+    // However, a pool must contain some shards from the beginnning.
+    //ASSERT(array_n(&pool->server) != 0);
     ASSERT(key != NULL);
 
     /*
@@ -813,6 +817,12 @@ server_pool_each_preconnect(void *elem, void *data)
         return NC_OK;
     }
 
+    // Return OK if no server is avail at beginning, so rest of logic and
+    // continue.
+    if (array_n(&sp->server) == 0) {
+      return NC_OK;
+    }
+
     status = array_each(&sp->server, server_each_preconnect, NULL);
     if (status != NC_OK) {
         return status;
@@ -881,6 +891,7 @@ rstatus_t
 server_pool_run(struct server_pool *pool)
 {
     //////
+    return NC_OK;
     ASSERT(array_n(&pool->shards) > 0 &&
            array_n(&pool->server) > 0);
     return NC_OK;
@@ -976,12 +987,25 @@ add_server_to_stats(struct server *srv, struct server_pool *pool)
   struct context *ctx = pool->ctx;
 
   struct stats_pool *stp;
-  stp = array_get(&ctx->stats->current, pool->idx);
+  struct stats *st = ctx->stats;
+
+  if (st->curr_servers >= st->max_allowed_servers) {
+    log_error("stats curr servers %d >= max_allowed servers %d, cannot add more",
+              st->curr_servers, st->max_allowed_servers);
+    return;
+  }
+
+  stats_lock(st);
+  st->curr_servers++;
+
+  stp = array_get(&st->current, pool->idx);
   add_server_to_stats_pool(stp, srv);
-  stp = array_get(&ctx->stats->shadow, pool->idx);
+  stp = array_get(&st->shadow, pool->idx);
   add_server_to_stats_pool(stp, srv);
-  stp = array_get(&ctx->stats->sum, pool->idx);
+  stp = array_get(&st->sum, pool->idx);
   add_server_to_stats_pool(stp, srv);
+
+  stats_unlock(st);
 }
 
 // a shard's master address has changed.
@@ -1182,9 +1206,6 @@ server_pool_init(struct array *server_pool, struct array *conf_pool,
     }
     ASSERT(array_n(server_pool) == npool);
 
-    // Set a watcher to each shard's master server status.
-    //set_watch_on_master_status(server_pool, ctx);
-
     /* set ctx as the server pool owner */
     status = array_each(server_pool, server_pool_each_set_owner, ctx);
     if (status != NC_OK) {
@@ -1206,6 +1227,10 @@ server_pool_init(struct array *server_pool, struct array *conf_pool,
         server_pool_deinit(server_pool);
         return status;
     }
+
+    // Set a watcher to each shard's master server status.
+    //set_watch_on_master_status(server_pool, ctx);
+    add_watcher_on_conf_pool(ctx);
 
     log_debug(LOG_DEBUG, "init %"PRIu32" pools", npool);
 

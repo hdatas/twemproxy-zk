@@ -60,7 +60,7 @@
 
 #define STATS_ADDR      "0.0.0.0"
 #define STATS_PORT      22222
-#define STATS_INTERVAL  (30 * 1000) /* in msec */
+#define STATS_INTERVAL  (10 * 1000) /* in msec */
 
 typedef enum stats_type {
     STATS_INVALID,
@@ -126,6 +126,12 @@ struct stats {
     volatile int        updated;         /* current (a) updated? */
 
     struct context     *context;         /* owning context */
+    pthread_mutex_t    lock;             // a lock to sync update ops
+
+    // max # of servers supported.  stats.buf is pre-allocated to accommodate up
+    // to these many servers.
+    int                 max_allowed_servers;
+    int                 curr_servers;    // currently these many servers are covered.
 };
 
 #define DEFINE_ACTION(_name, _type, _desc) STATS_POOL_##_name,
@@ -225,5 +231,7 @@ void stats_destroy(struct stats *stats);
 void stats_swap(struct stats *stats);
 
 rstatus_t add_server_to_stats_pool(struct stats_pool *stp, struct server *srv);
+void stats_lock(struct stats *st);
+void stats_unlock(struct stats *st);
 
 #endif

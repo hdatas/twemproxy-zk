@@ -208,9 +208,9 @@ stats_server_map(struct array *stats_server, struct array *server)
     uint32_t i, nserver;
 
     nserver = array_n(server);
-    ASSERT(nserver != 0);
+    //ASSERT(nserver != 0);
 
-    status = array_init(stats_server, nserver, sizeof(struct stats_server));
+    status = array_init(stats_server, nserver + 4, sizeof(struct stats_server));
     if (status != NC_OK) {
         return status;
     }
@@ -350,7 +350,7 @@ stats_create_buf(struct stats *st)
     size_t size = 0;
     uint32_t i;
 
-    ASSERT(st->buf.data == NULL && st->buf.size == 0);
+    //ASSERT(st->buf.data == NULL && st->buf.size == 0);
 
     /* header */
     size += 1;
@@ -415,7 +415,15 @@ stats_create_buf(struct stats *st)
                 size += key_value_extra;
             }
         }
+        st->curr_servers += array_n(&stp->server);;
     }
+
+    // As a dirty hack, add redundant space to hold stats for dynamically added
+    // servers.
+    //
+    // TODO: A better way is to resize stats buf based on number of pools/servers
+    // after dynamic change.
+    size += st->max_allowed_servers * (40 + int64_max_digits + key_value_extra);
 
     /* footer */
     size += 2;
@@ -744,6 +752,33 @@ stats_summarize_latency(struct stats *st)
     pthread_mutex_unlock(&ctx->histo_lock);
 }
 
+// Lock/Unlock to sync operations that read/write stats internals,
+// for example, the stats_server[] array that may be updated
+// by ZK update.
+void
+stats_lock(struct stats *st)
+{
+  pthread_mutex_lock(&st->lock);
+}
+
+void
+stats_unlock(struct stats *st)
+{
+  pthread_mutex_unlock(&st->lock);
+}
+
+// Reserver enough space for future servers to be added.
+// Now that we allow user to addd new targets / replace targets at run
+// time, which requires the stats buffer to be big enough to hold
+// dynamically added servers.
+void
+resize_stats_buffer(struct stats *st)
+{
+
+  // TODO: free st->buf, then re-create st->buf using stats_create_buf()
+
+}
+
 static void
 stats_aggregate(struct stats *st)
 {
@@ -757,6 +792,10 @@ stats_aggregate(struct stats *st)
 
     log_debug(LOG_PVERB, "aggregate stats shadow %p to sum %p", st->shadow.elem,
               st->sum.elem);
+
+    // Lock the stats, so async zk update cannot change stats internals,
+    // particularly cannot add / remove servers.
+    stats_lock(st);
 
     for (i = 0; i < array_n(&st->shadow); i++) {
         struct stats_pool *stp1, *stp2;
@@ -777,6 +816,8 @@ stats_aggregate(struct stats *st)
 
     // Summarize per-server counters to owning pool.
     stats_summarize_servers_to_pool(st);
+
+    stats_unlock(st);
 
     st->aggregate = 0;
 }
@@ -1022,6 +1063,10 @@ stats_create(uint16_t stats_port, char *stats_ip, int stats_interval,
     st->updated = 0;
     st->aggregate = 0;
 
+    pthread_mutex_init(&st->lock, NULL);
+    st->max_allowed_servers = 10000;
+    st->curr_servers = 0;
+
     /* map server pool to current (a), shadow (b) and sum (c) */
 
     status = stats_pool_map(&st->current, server_pool);
@@ -1089,6 +1134,7 @@ stats_swap(struct stats *st)
     log_debug(LOG_PVERB, "swap stats current %p shadow %p", st->current.elem,
               st->shadow.elem);
 
+    stats_lock(st);
     array_swap(&st->current, &st->shadow);
 
     /*
@@ -1096,6 +1142,8 @@ stats_swap(struct stats *st)
      * stats addition idempotent
      */
     stats_pool_reset(&st->current);
+    stats_unlock(st);
+
     st->updated = 0;
 
     st->aggregate = 1;

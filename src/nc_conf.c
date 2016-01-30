@@ -66,6 +66,9 @@ static bool conf_match_server(struct conf_server *conf_srv, struct server *srv);
 static void set_server_shard_status(struct conf_shard *conf_sd,
                                     struct shard *srv_sd);
 static bool is_valid_conf_server(struct conf_server *conf_srv);
+static rstatus_t update_server_shards_from_conf_json(JSON_Object *pobj,
+                                    struct array *srv_shards,
+                                    struct server_pool *sp);
 
 static struct command conf_commands[] = {
     { string("listen"),
@@ -180,9 +183,16 @@ conf_server_to_server(struct conf_server *cs, struct server *s)
     // a struct server owner is a srv_pool.
     s->owner = NULL;
 
-    s->pname = cs->pname;
-    s->name = cs->name;
-    s->addrstr = cs->addrstr;
+    string_init(&s->pname);
+    string_init(&s->name);
+    string_init(&s->addrstr);
+    string_duplicate(&s->pname, &cs->pname);
+    string_duplicate(&s->name, &cs->name);
+    string_duplicate(&s->addrstr, &cs->addrstr);
+    //s->pname = cs->pname;
+    //s->name = cs->name;
+    //s->addrstr = cs->addrstr;
+
     s->port = (uint16_t)cs->port;
     s->weight = (uint32_t)cs->weight;
 
@@ -375,6 +385,9 @@ conf_pool_each_transform(void *elem, void *data)
     sp->server_failure_limit = (uint32_t)cp->server_failure_limit;
     sp->auto_eject_hosts = cp->auto_eject_hosts ? 1 : 0;
     sp->preconnect = cp->preconnect ? 1 : 0;
+
+    // Init the per-pool lock.
+    pthread_mutex_init(&sp->lock, NULL);
 
     // Init sp->server[] and server_shards in "conf_shards_to_server_shards".
 
@@ -1944,9 +1957,21 @@ conf_json_post_validate(struct conf *cf)
     pool->preconnect  =1;
 
     pool->auto_eject_hosts = 0;
-    pool->server_connections = 1;
     pool->server_retry_timeout = 10000;
     pool->server_failure_limit = 2;
+
+    if (pool->client_connections < 1) {
+      pool->client_connections = 1;
+    }
+    if (pool->backlog < 1) {
+        pool->backlog = CONF_DEFAULT_LISTEN_BACKLOG;
+    }
+    if (pool->server_connections < 1) {
+      pool->server_connections = CONF_DEFAULT_SERVER_CONNECTIONS;
+    }
+    if (pool->timeout < 1) {
+      pool->timeout = 100;
+    }
   }
   return NC_OK;
 }
@@ -2369,6 +2394,7 @@ conf_shards_to_server_shards(struct array* cf_shards,
     for (uint32_t i = 0; i < array_n(cf_shards); i++) {
         conf_sd = array_get(cf_shards, i);
         srv_sd = array_push(srv_shards);
+        memset(srv_sd, 0, sizeof(struct shard));
         srv_sd->idx = array_idx(srv_shards, srv_sd);
 
         rv = conf_shard_to_server_shard(conf_sd, srv_sd, sp);
@@ -2554,6 +2580,11 @@ conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool, char *pool_nam
   pool->shard_range_min = (uint32_t)atoi(json_object_get_string(pobj, "pool_begin"));
   pool->shard_range_max = (uint32_t)atoi(json_object_get_string(pobj, "pool_end"));
 
+  // Max number of connections a proxy can establish to a server.
+  const char *srv_conns = json_object_get_string(pobj, "server_connections");
+  if (srv_conns) {
+    pool->server_connections = (uint32_t)atoi(srv_conns);
+  }
 
   // Init the list of proxies.
   status = array_init(&pool->proxies, CONF_DEFAULT_PROXIES,
@@ -2564,6 +2595,7 @@ conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool, char *pool_nam
                       sizeof(struct conf_shard));
   JSON_Array* jshards = json_object_get_array(pobj, "shards");
   size_t nshards = json_array_get_count(jshards);
+
 
   for (size_t i = 0; i < nshards; i++) {
     // Add a shard into pool.
@@ -2641,17 +2673,27 @@ conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool, char *pool_nam
 static bool
 sanity_check_pool_conf_json(JSON_Object *pobj)
 {
+  if (!pobj) return false;
+
+  uint32_t pool_begin = 0, pool_end = 0;
+
   if (json_object_get_string(pobj, "name") == NULL) {
     return false;
   }
   if (json_object_get_string(pobj, "id") == NULL) {
     return false;
   }
+
   if (json_object_get_string(pobj, "pool_begin") == NULL) {
     return false;
+  } else {
+    pool_begin = atoi(json_object_get_string(pobj, "pool_begin"));
   }
+
   if (json_object_get_string(pobj, "pool_end") == NULL) {
     return false;
+  } else {
+    pool_end = atoi(json_object_get_string(pobj, "pool_end"));
   }
 
   // Sanity check shards in the pool.
@@ -2661,11 +2703,35 @@ sanity_check_pool_conf_json(JSON_Object *pobj)
     return false;
   }
 
+  uint32_t shard_range_min = 0xFFFFFFFF, shard_range_max = 0;
+
   for (size_t i = 0; i < nshards; i++) {
     JSON_Object* js = json_array_get_object(jshards, i);
     if (!sanity_check_shard_conf_json(js)) {
       return false;
     }
+
+    // TODO: make sure shards ranges don't overlap.
+    uint32_t begin = atoi(json_object_get_string(js, "shard_begin"));
+    uint32_t end = atoi(json_object_get_string(js, "shard_end"));
+
+    if (shard_range_min > begin) {
+      shard_range_min = begin;
+    }
+    if (shard_range_max < end) {
+      shard_range_max = end;
+    }
+  }
+
+  if (shard_range_min != pool_begin) {
+    log_error("pool range min %d != shard range min %d",
+              pool_begin, shard_range_min);
+    return false;
+  }
+  if (shard_range_max != pool_end) {
+    log_error("pool range max %d != shard range max %d",
+              pool_end, shard_range_max);
+    return false;
   }
 
   return true;
@@ -2675,6 +2741,8 @@ sanity_check_pool_conf_json(JSON_Object *pobj)
 static bool
 sanity_check_shard_conf_json(JSON_Object *sobj)
 {
+  if (!sobj) return false;
+
   if (json_object_get_string(sobj, "shard_begin") == NULL) {
     return false;
   }
@@ -2865,7 +2933,7 @@ conf_match_server(struct conf_server *conf_srv, struct server *srv)
 // "srv_shards":  array of currenet shards in the pool.
 // "sp" :         the owner server_pool.
 //
-rstatus_t
+static rstatus_t
 update_server_shards_from_conf_json(JSON_Object *pobj,
                                     struct array *srv_shards,
                                     struct server_pool *sp)
@@ -3027,4 +3095,87 @@ is_valid_conf_server(struct conf_server *conf_srv)
   return (conf_srv->name.data != NULL &&
           conf_srv->port != 0 &&
           conf_srv->valid);
+}
+
+static void
+conf_pool_watcher(zhandle_t *zkh, int type, int state,
+                  const char *path, void *ctx)
+{
+  struct server_pool *sp = (struct server_pool*)ctx;
+  ASSERT(sp != NULL);
+
+  log_error("conf_pool_watcher got event %s, state %s at path %s",
+            Type2String(type), State2String(state), path);
+
+  if (type == ZOO_CREATED_EVENT || type == ZOO_CHANGED_EVENT) {
+    int buflen = 10000;
+    char buf[buflen];
+    memset(buf, 0, (size_t)buflen);
+
+    int rc = ZKGet(zkh, path, buf, buflen, 0, 1);
+    if (rc < 0 || rc >= buflen) {
+      log_error("read %s failed, ret %d", path, rc);
+
+    } else {
+      // convert the content to a json obj.
+      JSON_Value *jroot = json_parse_string_with_comments(buf);
+      if (!jroot || (JSONObject != json_type(jroot))) {
+        log_error("pool config znode error format : %s", buf);
+        goto exit;
+      }
+
+      JSON_Object* pool_obj = json_value_get_object(jroot);
+      if (!sanity_check_pool_conf_json(pool_obj)) {
+        log_error("pool config invalid format: %s", buf);
+        goto exit;
+      }
+
+      // Apply the updated pool conf to server_pool.
+      pthread_mutex_lock(&sp->lock);
+      update_server_shards_from_conf_json(pool_obj, &sp->shards, sp);
+      pthread_mutex_unlock(&sp->lock);
+
+    }
+  } else if (type == ZOO_DELETED_EVENT) {
+
+  }
+
+exit:
+  ZKSetExistsWatch(zkh, (char*)path, conf_pool_watcher, ctx);
+}
+
+
+// Add a watcher on a pool's config znode.
+rstatus_t
+add_watcher_on_conf_pool(struct context *ctx)
+{
+  if (ctx->zkh == NULL) {
+    log_error("NO connection to ZK is established.\n");
+    return NC_ERROR;
+  }
+
+  size_t pathlen = 500;
+  char zkpath[pathlen];
+  struct array *pools = &ctx->pool;
+  struct instance *inst = ctx->owner_inst;
+  rstatus_t rv = NC_OK;
+
+  // For now, we know each context has only one pool.
+  for (uint32_t i = 0; i < array_n(pools); i++ ) {
+
+    // Watch on the pool's config znode.
+    snprintf(zkpath, pathlen, "%s/%s", inst->zk_config_root, inst->pool_name);
+
+    struct server_pool *sp = (struct server_pool *)array_get(pools, i);
+    int rc = ZKSetExistsWatch(ctx->zkh, zkpath, conf_pool_watcher, sp);
+    if (rc != ZOK) {
+      log_error("failed to set watcher on znode %s", zkpath);
+      rv = NC_ERROR;
+    } else {
+      log_warn("have put watcher on znode %s", zkpath);
+      rv = NC_OK;
+    }
+  }
+
+  return rv;
 }

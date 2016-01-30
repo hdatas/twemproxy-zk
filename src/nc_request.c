@@ -601,7 +601,9 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
     key = kpos->start;
     keylen = (uint32_t)(kpos->end - kpos->start);
 
+    pthread_mutex_lock(&pool->lock);
     s_conn = server_pool_conn(ctx, c_conn->owner, key, keylen);
+    pthread_mutex_unlock(&pool->lock);
     if (s_conn == NULL) {
         req_forward_error(ctx, c_conn, msg);
         return;

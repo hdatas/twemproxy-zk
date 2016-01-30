@@ -87,6 +87,7 @@ core_ctx_create(struct instance *nci)
       nc_free(ctx);
       return NULL;
     }
+    ctx->cf = ctx->json_cf;
 
     // Init hdr-histogram
     int64_t lowest = 1;
