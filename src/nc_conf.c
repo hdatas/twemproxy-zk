@@ -404,7 +404,9 @@ conf_pool_each_transform(void *elem, void *data)
 
     // Populate server shards (and servers per shard) from conf-shards.
     log_debug(LOG_NOTICE, "init shards at pool %d (\"%s\")", sp->idx, sp->name.data);
-    array_init(&sp->shards, array_n(&cp->shards), sizeof(struct shard));
+    //array_init(&sp->shards, array_n(&cp->shards), sizeof(struct shard));
+    // "cp->shards" may be empty when we start from an empty pool.
+    array_init(&sp->shards, 16, sizeof(struct shard));
     //status = array_each(&cp->shards, conf_shard_each_server_shard, &sp->shards);
     status = conf_shards_to_server_shards(&cp->shards, &sp->shards, sp);
     if (status != NC_OK) {
