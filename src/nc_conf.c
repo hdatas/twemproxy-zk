@@ -2699,8 +2699,9 @@ sanity_check_pool_conf_json(JSON_Object *pobj)
   // Sanity check shards in the pool.
   JSON_Array* jshards = json_object_get_array(pobj, "shards");
   size_t nshards = json_array_get_count(jshards);
-  if (nshards <= 0) {
-    return false;
+  if (nshards == 0) {
+    // Allow an empty pool without and shards.
+    return true;
   }
 
   uint32_t shard_range_min = 0xFFFFFFFF, shard_range_max = 0;
@@ -2714,6 +2715,14 @@ sanity_check_pool_conf_json(JSON_Object *pobj)
     // TODO: make sure shards ranges don't overlap.
     uint32_t begin = atoi(json_object_get_string(js, "shard_begin"));
     uint32_t end = atoi(json_object_get_string(js, "shard_end"));
+    if (begin == shard_range_min) {
+      log_error("duplicated shard range begin: %d", begin);
+      return false;
+    }
+    if (end == shard_range_max) {
+      log_error("duplicated shard range end: %d", end);
+      return false;
+    }
 
     if (shard_range_min > begin) {
       shard_range_min = begin;
@@ -2980,6 +2989,11 @@ update_server_shards_from_conf_json(JSON_Object *pobj,
     if (srv_sd == NULL) {
       log_warn("found a new conf_shard: [%d : %d]\n",
                conf_sd->range_begin, conf_sd->range_end);
+      if (strncmp(conf_sd->status, "running", 7) != 0) {
+        log_warn("new shard [%d : %d] is added but status %s, skip it",
+                 conf_sd->range_begin, conf_sd->range_end, conf_sd->status);
+        continue;
+      }
 
       srv_sd = array_push(srv_shards);
       memset(srv_sd, 0, sizeof(struct shard));
@@ -3019,7 +3033,8 @@ update_server_shards_from_conf_json(JSON_Object *pobj,
     conf_srv = &conf_sd->master;
     if (!is_valid_conf_server(conf_srv)) {
       // not a valid conf_server, skip.
-
+      log_error("conf_shard has invalid master conf_server");
+      continue;
     } else if (!conf_match_server(conf_srv, srv)) {
       log_warn("shard master changed. Use new master: %s\n",
                conf_srv->name.data);

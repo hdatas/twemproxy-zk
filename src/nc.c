@@ -556,7 +556,7 @@ nc_post_run(struct instance *nci)
         nc_remove_pidfile(nci);
     }
     // Close zk connection.
-    if (nci->ctx->zkh) {
+    if (nci->ctx && nci->ctx->zkh) {
       ZKClose(nci->ctx->zkh);
     }
 
