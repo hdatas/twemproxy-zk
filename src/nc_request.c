@@ -565,7 +565,10 @@ req_forward_stats(struct context *ctx, struct server *server, struct msg *msg)
 {
     ASSERT(msg->request);
 
-    stats_server_incr(ctx, server, requests);
+    // A multi-key request should count each key as a request.
+    for (uint32_t i = 0; i < array_n(msg->keys); i++) {
+      stats_server_incr(ctx, server, requests);
+    }
     stats_server_incr_by(ctx, server, request_bytes, msg->mlen);
 }
 

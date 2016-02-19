@@ -740,7 +740,10 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     }
 
     //uint32_t hv = pool->key_hash((char *)key, keylen);
-    uint32_t hv = hash_murmur((char *)key, keylen);
+    //uint32_t hv = hash_murmur((char *)key, keylen);
+    //uint32_t hv = hash_crc32((char *)key, keylen);
+    //uint32_t hv = hash_hsieh((char *)key, keylen);
+    uint32_t hv = hash_jenkins((char *)key, keylen);
 
     hv = hv % pool->shard_range_max;
     if (hv < pool->shard_range_min) {
@@ -752,8 +755,9 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     for (uint32_t i = 0; i < nshards; i++) {
         struct shard* sd = (struct shard*)array_get(&pool->shards, i);
         if (sd->range_begin <= hv && hv <= sd->range_end) {
-            log_debug(LOG_NOTICE, "shard-search: key %s => shard %d",
-                      (char*)key, i);
+            log_debug(LOG_NOTICE, "shard-search: key %s, hv %d, "
+                      "%d shards, map to shard %d (idx %d)",
+                      (char*)key, hv, nshards, i, sd->idx);
             return sd;
         }
     }

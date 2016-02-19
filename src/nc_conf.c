@@ -1959,7 +1959,8 @@ conf_json_post_validate(struct conf *cf)
     pool->preconnect  =1;
 
     pool->auto_eject_hosts = 0;
-    pool->server_retry_timeout = 10000;
+    // use a larger server timeout.
+    pool->server_retry_timeout = 200000;
     pool->server_failure_limit = 2;
 
     if (pool->client_connections < 1) {
