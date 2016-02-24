@@ -127,7 +127,6 @@ struct context {
     struct conf        *cf;         /* configuration */
     struct stats       *stats;      /* stats */
 
-    //struct array       pool;        /* server_pool[] */
     struct event_base  *evb;        /* event base */
     int                max_timeout; /* max timeout in msec */
     int                timeout;     /* timeout in msec */

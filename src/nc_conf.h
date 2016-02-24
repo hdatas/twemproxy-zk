@@ -114,8 +114,8 @@ struct conf_pool {
     int                preconnect;            /* preconnect: */
     int                auto_eject_hosts;      /* auto_eject_hosts: */
     int                server_connections;    /* server_connections: */
-    uint32_t server_retry_timeout;  /* server_retry_timeout: in msec */
-    uint32_t server_failure_limit;  /* server_failure_limit: */
+    int32_t server_retry_timeout;  /* server_retry_timeout: in msec */
+    int32_t server_failure_limit;  /* server_failure_limit: */
     struct array       server;                /* servers: conf_server[] */
     unsigned           valid:1;               /* valid? */
 
@@ -173,7 +173,7 @@ struct conf *conf_json_create_from_zk(char *zkservers, struct instance *nci,
 void conf_destroy(struct conf *cf);
 struct conf *create_pool_conf_from_file(char *filepath, struct context *ctx);
 
-struct conf *get_pool_conf_from_zk(char* zkservers, struct context *ctx);
+struct conf *get_conf_from_zk(char* zkservers, struct context *ctx);
 rstatus_t add_watcher_on_conf_pool(struct context *ctx);
 
 #endif

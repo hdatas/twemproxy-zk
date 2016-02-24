@@ -50,11 +50,13 @@ static rstatus_t string_to_conf_server(const uint8_t* saddr,
 static rstatus_t conf_shards_to_server_shards(struct array* cf_shards,
                                               struct array* srv_shards,
                                               struct server_pool* sp);
-static rstatus_t parse_pool_conf_file(struct conf *cf, char *pool_name);
+static rstatus_t parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname);
+static rstatus_t parse_pool_conf_file(struct conf *cf, const char *pool_name);
 static rstatus_t conf_json_to_conf_pool(JSON_Object *pobj,
                                         struct conf_pool *pool,
                                         char *pool_name);
 static bool sanity_check_pool_conf_json(JSON_Object *pobj);
+static bool sanity_check_pool_names_json(JSON_Object *pobj);
 static bool sanity_check_shard_conf_json(JSON_Object *sobj);
 static void display_server_shard(struct shard *srv_sd);
 static rstatus_t conf_shard_to_server_shard(struct conf_shard *conf_sd,
@@ -400,7 +402,7 @@ conf_pool_each_transform(void *elem, void *data)
     sp->shard_range_max = cp->shard_range_max;
 
     log_debug(LOG_VERB, "transform to pool %"PRIu32" '%.*s'", sp->idx,
-              sp->name.len, sp->name.data);
+       sp->name.len, sp->name.data);
 
     // Populate server shards (and servers per shard) from conf-shards.
     log_debug(LOG_NOTICE, "init shards at pool %d (\"%s\")", sp->idx, sp->name.data);
@@ -418,7 +420,6 @@ conf_pool_each_transform(void *elem, void *data)
         srv_sd = (struct shard*) array_get(&sp->shards, i);
         display_server_shard(srv_sd);
     }
-
     dump_server_pool(sp);
 
     return NC_OK;
@@ -429,7 +430,6 @@ conf_dump(struct conf *cf)
 {
     uint32_t i, j, npool, nserver;
     struct conf_pool *cp;
-    struct string *s;
 
     npool = array_n(&cf->pool);
     if (npool == 0) {
@@ -467,8 +467,10 @@ conf_dump(struct conf *cf)
         log_debug(LOG_VVERB, "  servers: %"PRIu32"", nserver);
 
         for (j = 0; j < nserver; j++) {
-            s = array_get(&cp->server, j);
-            log_debug(LOG_VVERB, "    %.*s", s->len, s->data);
+	   struct string s ;
+	    struct conf_pool *server = (struct conf_pool *)array_get(&cp->server, j);
+            s = server->name;
+            log_debug(LOG_VVERB, "    %.*s", s.len, s.data);
         }
     }
 }
@@ -864,18 +866,9 @@ conf_open(char *filename)
 {
     rstatus_t status;
     struct conf *cf;
-    FILE *fh;
-
-    fh = fopen(filename, "r");
-    if (fh == NULL) {
-        log_error("conf: failed to open configuration '%s': %s", filename,
-                  strerror(errno));
-        return NULL;
-    }
 
     cf = nc_alloc(sizeof(*cf));
     if (cf == NULL) {
-        fclose(fh);
         return NULL;
     }
     memset(cf, 0, sizeof(*cf));
@@ -883,7 +876,6 @@ conf_open(char *filename)
     status = array_init(&cf->arg, CONF_DEFAULT_ARGS, sizeof(struct string));
     if (status != NC_OK) {
         nc_free(cf);
-        fclose(fh);
         return NULL;
     }
 
@@ -891,12 +883,9 @@ conf_open(char *filename)
     if (status != NC_OK) {
         array_deinit(&cf->arg);
         nc_free(cf);
-        fclose(fh);
         return NULL;
     }
 
-    cf->fname = filename;
-    cf->fh = fh;
     cf->depth = 0;
     /* parser, event, and token are initialized later */
     cf->seq = 0;
@@ -1519,7 +1508,7 @@ conf_destroy(struct conf *cf)
     }
     array_deinit(&cf->arg);
 
-    int i = 0;
+    //int i = 0;
     while (array_n(&cf->pool) != 0) {
         log_debug(LOG_NOTICE, "deinit conf pool %d", i++);
         conf_pool_deinit(array_pop(&cf->pool));
@@ -1578,7 +1567,7 @@ conf_set_listen(struct conf *cf, struct command *cmd, void *conf)
 
     if (value->data[0] == '/') {
         uint8_t *q, *start, *perm;
-        uint32_t permlen;
+        //uint32_t permlen;
 
 
         /* parse "socket_path permissions" from the end */
@@ -1591,7 +1580,7 @@ conf_set_listen(struct conf *cf, struct command *cmd, void *conf)
             namelen = value->len;
         } else {
             perm = q + 1;
-            permlen = (uint32_t)(p - perm + 1);
+            //permlen = (uint32_t)(p - perm + 1);
 
             p = q - 1;
             name = start;
@@ -2408,14 +2397,14 @@ conf_shards_to_server_shards(struct array* cf_shards,
 
 
 // In renewed ZK scheme, each pool has its topology stored in znode
-// "/distkv/proxy/<pool name>".
+// "/distkv/proxy/<pool name>". All available pools are under /distkv/proxy/proxy_ip:proxy_port
 //
-// This method reads a pool's conf from znode, and init a "conf" object.
+// This method reads every pool's conf from znode "/distkv/proxy/<pool name>,
+// and init a "conf" object.
 struct conf*
-get_pool_conf_from_zk(char* zkservers, struct context *ctx)
+get_conf_from_zk(char* zkservers, struct context *ctx)
 {
   struct instance *inst = ctx->owner_inst;
-  char *pool_name = inst->pool_name;
 
   if (ctx->zkh == NULL) {
     ctx->zkh = ZKConnect(zkservers);
@@ -2427,73 +2416,45 @@ get_pool_conf_from_zk(char* zkservers, struct context *ctx)
 
   size_t max_path = 500;
   char path[max_path];
-  snprintf(path, max_path, "%s/%s", inst->zk_config_root, pool_name);
+  snprintf(path, max_path, "%s/%s:%d", inst->zk_config_root, inst->proxy_ip,
+	inst->proxy_port);
 
-  // Connect to ZK, grab a pool's conf, save to a local file.
-  // This conf contains all info for a particular pool.
+  // Connect to ZK, grab all pool names
   int buflen = 10000;
   char buf[buflen];
   int sync = 1;
   int watch = 0;
   int conf_len = ZKGet(ctx->zkh, path, buf, buflen, watch, sync);
   if (conf_len <= 0 || conf_len >= buflen) {
-    log_error("pool \"%s \"conf incorrect: %s, ret %d",
-              pool_name, path, conf_len);
+    log_error("proxy \"%s:%d \"conf incorrect: %s, ret %d",
+              inst->proxy_ip, inst->proxy_port, path, conf_len);
     ZKClose(ctx->zkh);
     ctx->zkh = NULL;
     return NULL;
   }
-
+  memset(path, 0, max_path);
   // Now, save pool's conf to a disk file.
-  sprintf(path, "%s-pool-%s", CONF_DEFAULT_FILE_SAVE_PATH, pool_name);
+  sprintf(path, "%s/%s:%d", CONF_DEFAULT_FILE_SAVE_PATH, inst->proxy_ip,
+  inst->proxy_port);
   nc_write_file(path, buf, conf_len);
 
-  // Read this pool's config file, init a conf object.
-  struct conf *cf;
-  cf = create_pool_conf_from_file(path, ctx);
+  rstatus_t status = NC_OK;
+  struct conf *cf = conf_open(path);
   if (cf == NULL) {
+      return NULL;
+  }
+  array_null(&cf->arg);
+  if (parse_pools_conf_file(ctx, cf, path) != NC_OK){
+    conf_destroy(cf);
     return NULL;
   }
-
   // After conf is created, correct some options.
-  rstatus_t status = conf_json_post_validate(cf);
+  status = conf_json_post_validate(cf);
   if (status != NC_OK) {
     conf_destroy(cf);
     return NULL;
   }
-
-  cf->zk_servers = zkservers;
-  cf->valid = 1;
-  conf_json_dump(cf);
-  conf_dump(cf);
-  // the "fname" is not used anywhere else. Set to NULL.
-  cf->fname = NULL;
-
-  return cf;
-}
-
-
-struct conf*
-create_pool_conf_from_file(char *filepath, struct context *ctx)
-{
-  struct instance *inst = ctx->owner_inst;
-
-  rstatus_t status = NC_OK;
-  struct conf *cf = conf_open(filepath);
-  if (cf == NULL) {
-      return NULL;
-  }
-  if (cf->fh) {
-    fclose(cf->fh);
-    cf->fh = NULL;
-  }
-  array_null(&cf->arg);
-
-  status = parse_pool_conf_file(cf, inst->pool_name);
-  if (status != NC_OK) {
-    goto error;
-  }
-
+  
   // Init proxy listening address.
   // Each context has only one proxy for a given pool.
   uint32_t num_pools = array_n(&cf->pool);
@@ -2508,17 +2469,78 @@ create_pool_conf_from_file(char *filepath, struct context *ctx)
     conf_server_to_conf_listen(cp, &pool->listen);
   }
 
-  return cf;
+  cf->zk_servers = zkservers;
+  cf->valid = 1;
+  conf_json_dump(cf);
+  conf_dump(cf);
+  // the "fname" is not used anywhere else. Set to NULL.
+  cf->fname = NULL;
 
-error:
-  log_stderr("configuration file '%s' JSON syntax invalid", filepath);
-  conf_destroy(cf);
-  return NULL;
+  return cf;
 }
 
 // Parse a pool's conf file, and populate a conf object.
 static rstatus_t
-parse_pool_conf_file(struct conf *cf, char *pool_name)
+parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname)
+{
+    rstatus_t status = NC_OK;
+    struct instance *inst = ctx->owner_inst;
+    
+    JSON_Value *root_value = json_parse_file_with_comments(fname);
+    ASSERT(root_value != NULL);
+    if (JSONObject != json_type(root_value)) {
+        log_error("config file error format : %s", fname);
+        return NC_ERROR;
+    }
+    
+    JSON_Object* pools_obj = json_value_get_object(root_value);
+    if (!sanity_check_pool_names_json(pools_obj)) {
+    	log_error("config file invalid content : %s", cf->fname);
+    	json_value_free(root_value);
+    	return NC_ERROR;
+    }
+    JSON_Array* pnames = json_object_get_array(pools_obj, "pool_names");
+    size_t npools = json_array_get_count(pnames);
+	
+    for (size_t i = 0; i < npools; i++) {
+        // Connect to ZK and grab all pool's conf, save to a local file.
+        size_t max_path = 500;
+        char path[max_path];
+        // This conf contains all info for a particular pool.
+        const char* poolname = json_array_get_string(pnames, i);
+        int buflen = 10000;
+        char buf[buflen];
+        int sync = 1;
+        int watch = 0;
+	snprintf(path, max_path, "%s/%s", inst->zk_config_root, poolname);
+        int conf_len = ZKGet(ctx->zkh, path, buf, buflen, watch, sync);
+        if (conf_len <= 0 || conf_len >= buflen) {
+       	    log_error("pool \"%s \"conf incorrect: %s, ret %d",
+       	    poolname, path, conf_len);
+            ZKClose(ctx->zkh);
+            ctx->zkh = NULL;
+    	    json_value_free(root_value);
+            return NC_ERROR;
+       	}
+
+        // Now, save pool's conf to a disk file.
+        sprintf(path, "%s-pool-%s", CONF_DEFAULT_FILE_SAVE_PATH, poolname);
+        nc_write_file(path, buf, conf_len);
+	cf->fname = path;
+        // Read this pool's config file, init a conf object.
+        status = parse_pool_conf_file(cf, poolname);
+        if (status != NC_OK) {
+    	  json_value_free(root_value);
+          return NC_ERROR;
+        }
+    }
+
+    json_value_free(root_value);
+    return NC_OK;
+}
+// Parse a pool's conf file, and populate a conf object.
+static rstatus_t
+parse_pool_conf_file(struct conf *cf, const char *pool_name)
 {
     rstatus_t status = NC_OK;
 
@@ -2533,12 +2555,14 @@ parse_pool_conf_file(struct conf *cf, char *pool_name)
     JSON_Object* pool_obj = json_value_get_object(root_value);
     if (!sanity_check_pool_conf_json(pool_obj)) {
       log_error("config file invalid content : %s", cf->fname);
+      json_value_free(root_value);
       return NC_ERROR;
     }
 
     // Create a conf_pool object.
     struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
     if (pool == NULL) {
+      json_value_free(root_value);
       return NC_ENOMEM;
     }
     memset(pool, 0, sizeof(struct conf_pool));
@@ -2746,6 +2770,20 @@ sanity_check_pool_conf_json(JSON_Object *pobj)
     return false;
   }
 
+  return true;
+}
+
+static bool
+sanity_check_pool_names_json(JSON_Object *pobj)
+{
+  if (!pobj) return false;
+  // Sanity check poolnames
+  JSON_Array* poolnames = json_object_get_array(pobj, "pool_names");
+  size_t npools = json_array_get_count(poolnames);
+  if (npools == 0) {
+    // Allow an empty pool without and shards.
+    return false;
+  }
   return true;
 }
 

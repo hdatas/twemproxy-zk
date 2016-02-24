@@ -78,7 +78,7 @@ core_ctx_create(struct instance *nci)
     ctx->json_cf = NULL;
     if (nci->zk_servers) {
       //ctx->json_cf = conf_json_create_from_zk(nci->zk_servers, nci, ctx);
-      ctx->json_cf = get_pool_conf_from_zk(nci->zk_servers, ctx);
+      ctx->json_cf = get_conf_from_zk(nci->zk_servers, ctx);
     } else if (nci->conf_filename) {
       ctx->json_cf = conf_json_create(nci->conf_filename, nci);
     }
