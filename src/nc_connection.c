@@ -254,7 +254,6 @@ conn_get_proxy(void *owner)
     if (conn == NULL) {
         return NULL;
     }
-
     conn->redis = pool->redis;
 
     conn->proxy = 1;

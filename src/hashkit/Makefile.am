@@ -6,11 +6,10 @@ AM_CFLAGS = -Wall -Wshadow
 AM_CFLAGS += -Wno-unused-parameter -Wno-unused-value
 AM_CFLAGS += -I/usr/local/include/zookeeper
 
-noinst_LIBRARIES = libhashkit.a
-
+noinst_LTLIBRARIES = libhashkit.la
 noinst_HEADERS = nc_hashkit.h
 
-libhashkit_a_SOURCES =		\
+libhashkit_la_SOURCES =		\
 	nc_crc16.c		\
 	nc_crc32.c		\
 	nc_fnv.c		\

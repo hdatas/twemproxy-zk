@@ -25,7 +25,7 @@ AM_CFLAGS += -I/usr/local/include/zookeeper
 AM_MAKEFLAGS = "CFLAGS = -I../../src/hdr_histogram"
 
 AM_LDFLAGS =
-AM_LDFLAGS += -lm -lpthread -rdynamic
+AM_LDFLAGS += -lm -lpthread -lz -rdynamic
 if OS_SOLARIS
 AM_LDFLAGS += -lnsl -lsocket
 endif
@@ -36,9 +36,8 @@ AM_LDFLAGS += -L/usr/local/lib -lzookeeper_mt
 
 SUBDIRS = hashkit proto event parson hdr_histogram
 
-sbin_PROGRAMS = nutcracker
-
-nutcracker_SOURCES =			\
+lib_LTLIBRARIES = libnutcracker.la
+libnutcracker_la_SOURCES =			\
 	nc_core.c nc_core.h		\
 	nc_connection.c nc_connection.h	\
 	nc_client.c nc_client.h		\
@@ -57,12 +56,16 @@ nutcracker_SOURCES =			\
 	nc_array.c nc_array.h		\
 	nc_util.c nc_util.h		\
 	nc_queue.h			\
-  zkutil.c zkutil.h \
-	nc.c
+  zkutil.c zkutil.h
 
-nutcracker_LDADD = $(top_builddir)/src/hashkit/libhashkit.a
-nutcracker_LDADD += $(top_builddir)/src/proto/libproto.a
-nutcracker_LDADD += $(top_builddir)/src/event/libevent.a
-nutcracker_LDADD += $(top_builddir)/src/parson/libparson.a
-nutcracker_LDADD += $(top_builddir)/src/hdr_histogram/libhdrhistogram.a
-nutcracker_LDADD += $(top_builddir)/contrib/yaml-0.1.4/src/.libs/libyaml.a
+libnutcracker_la_LIBADD = \
+                          $(top_builddir)/src/event/libevent.la \
+                          $(top_builddir)/src/hashkit/libhashkit.la \
+                          $(top_builddir)/src/proto/libproto.la \
+                          $(top_builddir)/src/parson/libparson.la \
+                          $(top_builddir)/src/hdr_histogram/libhdrhistogram.la \
+                          $(top_builddir)/contrib/yaml-0.1.4/src/libyaml.la
+
+sbin_PROGRAMS = nutcracker
+nutcracker_SOURCES = nc.c
+nutcracker_LDADD = libnutcracker.la

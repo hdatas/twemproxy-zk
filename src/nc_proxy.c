@@ -127,6 +127,9 @@ proxy_listen(struct context *ctx, struct conn *p)
     struct server_pool *pool = p->owner;
 
     ASSERT(p->proxy);
+#ifdef HAVE_LOCAL
+    p->family = AF_LOCAL;
+#endif
 
     p->sd = socket(p->family, SOCK_STREAM, 0);
     if (p->sd < 0) {
@@ -294,7 +297,7 @@ proxy_accept(struct context *ctx, struct conn *p)
                 return NC_OK;
             }
 
-            /* 
+            /*
              * Workaround of https://github.com/twitter/twemproxy/issues/97
              *
              * We should never reach here because the check for conn_ncurr_cconn()

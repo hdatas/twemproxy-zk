@@ -28,7 +28,7 @@
 #include <nc_conf.h>
 #include <nc_signal.h>
 
-//#define NC_CONF_PATH        "conf/nutcracker.yml"
+#define NC_CONF_PATH        "conf/nutcracker.yml"
 
 #define NC_LOG_DEFAULT      LOG_NOTICE
 #define NC_LOG_MIN          LOG_EMERG
@@ -39,25 +39,22 @@
 #define NC_STATS_ADDR       STATS_ADDR
 #define NC_STATS_INTERVAL   STATS_INTERVAL
 
-//#define NC_PID_FILE         NULL
+#define NC_PID_FILE         NULL
 
 #define NC_MBUF_SIZE        MBUF_SIZE
 #define NC_MBUF_MIN_SIZE    MBUF_MIN_SIZE
 #define NC_MBUF_MAX_SIZE    MBUF_MAX_SIZE
 
 // By default proxy listens on this port.
-//#define NC_PROXY_PORT  22100
+#define NC_PROXY_PORT  22100
 
-#if 0
 static int show_help;
 static int test_conf;
 static int daemonize;
-#endif
 static int show_version;
 static int describe_stats;
 
 static struct option long_options[] = {
-#if 0
     { "help",           no_argument,        NULL,   'h' },
     { "version",        no_argument,        NULL,   'V' },
     { "test-conf",      no_argument,        NULL,   't' },
@@ -65,7 +62,6 @@ static struct option long_options[] = {
     { "verbose",        required_argument,  NULL,   'v' },
     { "pid-file",       required_argument,  NULL,   'p' },
     { "pool",           required_argument,  NULL,   'l' },
-#endif
     { "describe-stats", no_argument,        NULL,   'D' },
     { "conf-file",      required_argument,  NULL,   'c' },
     { "proxy-addr",     required_argument,  NULL,   'x' },
@@ -80,10 +76,8 @@ static struct option long_options[] = {
     { NULL,             0,                  NULL,    0  }
 };
 
-//static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:z:g:l:";
-static char short_options[] = "Dc:o:s:i:a:m:x:y:z:g:";
+static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:z:g:l:";
 
-#if 0
 static rstatus_t
 nc_daemonize(int dump_core)
 {
@@ -185,7 +179,6 @@ nc_daemonize(int dump_core)
 
     return NC_OK;
 }
-#endif
 
 static void
 nc_print_run(struct instance *nci)
@@ -213,7 +206,6 @@ nc_print_done(void)
     loga("done, rabbit done");
 }
 
-#if 0
 static void
 nc_show_usage(void)
 {
@@ -317,7 +309,6 @@ nc_test_conf(struct instance *nci)
     return true;
 }
 
-#endif
 
 static void
 nc_set_default_options(struct instance *nci)
@@ -342,18 +333,14 @@ nc_set_default_options(struct instance *nci)
     nci->hostname[NC_MAXHOSTNAMELEN - 1] = '\0';
 
     nci->mbuf_chunk_size = NC_MBUF_SIZE;
-#if 0
     nci->conf_filename = NC_CONF_PATH;
-    
     nci->pid = (pid_t)-1;
     nci->pid_filename = NULL;
     nci->pidfile = 0;
-    
     nci->pool_name = NULL;
 
     nci->proxy_port = NC_PROXY_PORT;
     nci->proxy_ip = NULL;         // user must pass proxy addr.
-#endif
     nci->zk_config_root = CONF_DEFAULT_CONF_ZNODE;
     nci->zk_servers = NULL;
 }
@@ -373,7 +360,6 @@ nc_get_options(int argc, char **argv, struct instance *nci)
         }
 
         switch (c) {
-#if 0
         case 'h':
             show_version = 1;
             show_help = 1;
@@ -406,7 +392,6 @@ nc_get_options(int argc, char **argv, struct instance *nci)
         case 'p':
             nci->pid_filename = optarg;
             break;
-#endif
         case 'c':
             nci->conf_filename = optarg;
             break;
@@ -486,10 +471,8 @@ nc_get_options(int argc, char **argv, struct instance *nci)
 
         case '?':
             switch (optopt) {
-#if 0
             case 'p':
             case 'v':
-#endif
             case 'c':
                 log_stderr("nutcracker: option -%c requires a file name",
                            optopt);
@@ -530,7 +513,6 @@ nc_pre_run(struct instance *nci)
     if (status != NC_OK) {
         return status;
     }
-#if 0
     if (daemonize) {
         status = nc_daemonize(1);
         if (status != NC_OK) {
@@ -544,8 +526,6 @@ nc_pre_run(struct instance *nci)
         }
     }
     nci->pid = getpid();
-#endif
-
 
     status = signal_init();
     if (status != NC_OK) {
@@ -561,11 +541,9 @@ nc_pre_run(struct instance *nci)
 static void
 nc_post_run(struct instance *nci)
 {
-#if 0
     if (nci->pidfile) {
         nc_remove_pidfile(nci);
     }
-#endif
     // Close zk connection.
     if (nci->ctx && nci->ctx->zkh) {
       ZKClose(nci->ctx->zkh);
@@ -610,17 +588,15 @@ main(int argc, char **argv)
 
     status = nc_get_options(argc, argv, &nci);
     if (status != NC_OK) {
-        //nc_show_usage();
+        nc_show_usage();
         exit(1);
     }
 
     if (show_version) {
         log_stderr("This is nutcracker-%s" CRLF, NC_VERSION_STRING);
-#if 0
         if (show_help) {
             nc_show_usage();
         }
-#endif
 
         if (describe_stats) {
             stats_describe();
@@ -631,23 +607,21 @@ main(int argc, char **argv)
 
     if (nci.proxy_ip == NULL) {
         log_stderr("must provide proxy_ip and proxy_port" CRLF);
-        //nc_show_usage();
+        nc_show_usage();
         exit(1);
     }
 
     if (nci.pool_name == NULL) {
         log_stderr("must provide pool_name" CRLF);
-        //nc_show_usage();
+        nc_show_usage();
         exit(1);
     }
-#if 0
     if (test_conf) {
         if (!nc_test_conf(&nci)) {
             exit(1);
         }
         exit(0);
     }
-#endif
 
     status = nc_pre_run(&nci);
     if (status != NC_OK) {

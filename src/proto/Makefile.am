@@ -6,10 +6,10 @@ AM_CFLAGS = -Wall -Wshadow
 AM_CFLAGS += -Wno-unused-parameter -Wno-unused-value
 AM_CFLAGS += -I/usr/local/include/zookeeper
 
-noinst_LIBRARIES = libproto.a
+noinst_LTLIBRARIES = libproto.la
 
 noinst_HEADERS = nc_proto.h
 
-libproto_a_SOURCES =			\
+libproto_la_SOURCES =			\
 	nc_memcache.c			\
 	nc_redis.c

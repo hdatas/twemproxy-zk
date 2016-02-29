@@ -54,6 +54,15 @@ AC_TYPE_PID_T
 AC_TYPE_SIZE_T
 AC_TYPE_SSIZE_T
 
+# compiling library as standalone process instead of library, by deafult
+# disabled
+AC_ARG_ENABLE(
+        [local],
+        AS_HELP_STRING([--enable-local], [Enable feature local]))
+    AS_IF([test "x$enable_local" = "xyes"],
+            [AC_DEFINE(HAVE_LOCAL, [1], [Define to 1 if local is supported])]
+            )
+
 AC_C_BIGENDIAN(
   [],
   [AC_DEFINE(HAVE_LITTLE_ENDIAN, 1, [Define to 1 if machine is little endian])],
@@ -159,6 +168,7 @@ AM_CONDITIONAL([OS_LINUX], [test "x$ac_cv_epoll_works" = "xyes"])
 AM_CONDITIONAL([OS_BSD], [test "x$ac_cv_kqueue_works" = "xyes"])
 AM_CONDITIONAL([OS_SOLARIS], [test "x$ac_cv_evports_works" = "xyes"])
 AM_CONDITIONAL([OS_FREEBSD], [test "$(uname -v | cut -c 1-10)" == "FreeBSD 10"])
+AM_CONDITIONAL([HAVE_LOCAL], [test "x$enable_local" = "xyes"])
 
 # Package options
 AC_MSG_CHECKING([whether to enable debug logs and asserts])
