@@ -15,9 +15,6 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <signal.h>
 #include <getopt.h>
 #include <fcntl.h>
@@ -27,6 +24,7 @@
 #include <nc_core.h>
 #include <nc_conf.h>
 #include <nc_signal.h>
+#include <nc.h>
 
 #define NC_CONF_PATH        "conf/nutcracker.yml"
 
@@ -579,7 +577,7 @@ nc_run(struct instance *nci)
 }
 
 int
-main(int argc, char **argv)
+nc_run_standalone(int argc, char **argv)
 {
     rstatus_t status;
     struct instance nci;
@@ -634,4 +632,55 @@ main(int argc, char **argv)
     nc_post_run(&nci);
 
     exit(1);
+}
+
+int
+nc_run_lib(int log_level, char *log_file, char *conf_file, char *pid_file,
+        char *zk_servers, char *zk_root, uint16_t stats_port, char *stats_addr,
+        int stats_interval, size_t mbuf_size, uint16_t proxy_port, char
+        *proxy_name){
+
+    rstatus_t status;
+    struct instance nci;
+
+    nc_set_default_options(&nci);
+
+    if (log_file){
+        nci.log_level = log_level;
+        nci.log_filename = log_file;
+    }
+    if (conf_file) {
+        nci.conf_filename = conf_file;
+    }
+    if (pid_file) {
+        nci.pid_filename = pid_file;
+    }
+    if (zk_root && zk_servers) {
+        nci.zk_config_root = zk_root;
+        nci.zk_servers = zk_servers;
+    }
+    if (stats_port && stats_addr) {
+        nci.stats_port = stats_port;
+        nci.stats_addr = stats_addr;
+        nci.stats_interval = stats_interval;
+    }
+    if (mbuf_size) {
+        nci.mbuf_chunk_size = mbuf_size;
+    }
+    if (proxy_port && proxy_name) {
+        nci.proxy_port = proxy_port;
+        nci.proxy_ip = proxy_name;
+    }
+
+    status = nc_pre_run(&nci);
+    if (status != NC_OK) {
+        nc_post_run(&nci);
+        return NC_ERROR;
+    }
+
+    nc_run(&nci);
+
+    nc_post_run(&nci);
+
+    return NC_OK;
 }

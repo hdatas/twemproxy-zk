@@ -38,6 +38,7 @@ SUBDIRS = hashkit proto event parson hdr_histogram
 
 lib_LTLIBRARIES = libnutcracker.la
 libnutcracker_la_SOURCES =			\
+	nc.c nc.h		\
 	nc_core.c nc_core.h		\
 	nc_connection.c nc_connection.h	\
 	nc_client.c nc_client.h		\
@@ -67,5 +68,5 @@ libnutcracker_la_LIBADD = \
                           $(top_builddir)/contrib/yaml-0.1.4/src/libyaml.la
 
 sbin_PROGRAMS = nutcracker
-nutcracker_SOURCES = nc.c
+nutcracker_SOURCES = main.c
 nutcracker_LDADD = libnutcracker.la

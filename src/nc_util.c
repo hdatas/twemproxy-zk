@@ -563,11 +563,15 @@ nc_resolve_unix(struct string *name, struct sockinfo *si)
 int
 nc_resolve(struct string *name, int port, struct sockinfo *si)
 {
+#ifdef HAVE_LOCAL
+        return nc_resolve_unix(name, si);
+#else
     if (name != NULL && name->data[0] == '/') {
         return nc_resolve_unix(name, si);
     }
 
     return nc_resolve_inet(name, port, si);
+#endif
 }
 
 /*
