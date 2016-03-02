@@ -4,6 +4,7 @@ AM_CPPFLAGS = -g
 if !OS_SOLARIS
 AM_CPPFLAGS += -D_GNU_SOURCE
 endif
+AM_CPPFLAGS += -I $(top_srcdir)/include
 AM_CPPFLAGS += -I $(top_srcdir)/src/hashkit
 AM_CPPFLAGS += -I $(top_srcdir)/src/proto
 AM_CPPFLAGS += -I $(top_srcdir)/src/event

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-#include "nc.h"
+#include <nc.h>
 
 int
 main(int argc, char **argv)
