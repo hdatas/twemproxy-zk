@@ -608,12 +608,13 @@ nc_run_standalone(int argc, char **argv)
         nc_show_usage();
         exit(1);
     }
-
+#if 0
     if (nci.pool_name == NULL) {
         log_stderr("must provide pool_name" CRLF);
         nc_show_usage();
         exit(1);
     }
+#endif
     if (test_conf) {
         if (!nc_test_conf(&nci)) {
             exit(1);

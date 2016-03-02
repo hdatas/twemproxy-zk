@@ -133,6 +133,8 @@ proxy_listen(struct context *ctx, struct conn *p)
         log_error("socket failed: %s", strerror(errno));
         return NC_ERROR;
     }
+    printf("proxy_listen '%.*s' on  %d\n", pool->addrstr.len,
+            pool->addrstr.data, p->sd);
 
     status = proxy_reuse(p);
     if (status < 0) {

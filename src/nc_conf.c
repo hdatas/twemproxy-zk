@@ -866,9 +866,19 @@ conf_open(char *filename)
 {
     rstatus_t status;
     struct conf *cf;
+    FILE *fh;
+
+    fh = fopen(filename, "r");
+    if (fh == NULL) {
+        log_error("conf: failed to open configuration '%s': %s",
+                filename,
+                strerror(errno));
+        return NULL;
+    }
 
     cf = nc_alloc(sizeof(*cf));
     if (cf == NULL) {
+        fclose(fh);
         return NULL;
     }
     memset(cf, 0, sizeof(*cf));
@@ -876,6 +886,7 @@ conf_open(char *filename)
     status = array_init(&cf->arg, CONF_DEFAULT_ARGS, sizeof(struct string));
     if (status != NC_OK) {
         nc_free(cf);
+        fclose(fh);
         return NULL;
     }
 
@@ -883,9 +894,12 @@ conf_open(char *filename)
     if (status != NC_OK) {
         array_deinit(&cf->arg);
         nc_free(cf);
+        fclose(fh);
         return NULL;
     }
 
+    cf->fname = filename;
+    cf->fh = fh;
     cf->depth = 0;
     /* parser, event, and token are initialized later */
     cf->seq = 0;
@@ -2013,7 +2027,13 @@ conf_json_init_pool(JSON_Object* obj,
             }
         }
         struct conf_server* cp = (struct conf_server*) array_push(&pool->proxies);
+#ifdef HAVE_LOCAL
+        const char* tmp[256];
+        snprintf(tmp, 256, "/tmp/%s", name);
+        string_to_conf_server(tmp, cp);
+#else
         string_to_conf_server((const uint8_t*) p, cp);
+#endif
         break;
     }
 
@@ -2341,9 +2361,14 @@ string_to_conf_server(const uint8_t* saddr, struct conf_server* srv)
 
     string_copy(&srv->pname, saddr, len);  // hostname:port
     string_copy(&srv->name, saddr, len);   // hostname:port
-    string_copy(&srv->addrstr, saddr, (uint32_t)(delim - s_name));  // hostname only.
 
-    srv->port = nc_atoi(s_port, (uint32_t)(len - (delim + 1 - s_name)));
+    if (delim) {
+        string_copy(&srv->addrstr, saddr, (uint32_t)(delim - s_name));  // hostname only.
+        srv->port = nc_atoi(s_port, (uint32_t)(len - (delim + 1 - s_name)));
+    } else {
+        string_copy(&srv->addrstr, saddr, len);  // hostname only.
+        srv->port = 0;
+    }
 
     rstatus_t status = nc_resolve(&srv->addrstr, srv->port, &srv->info);
     if (status != NC_OK) {
@@ -2454,7 +2479,7 @@ get_conf_from_zk(char* zkservers, struct context *ctx)
     conf_destroy(cf);
     return NULL;
   }
-  
+
   // Init proxy listening address.
   // Each context has only one proxy for a given pool.
   uint32_t num_pools = array_n(&cf->pool);
@@ -2485,14 +2510,14 @@ parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname)
 {
     rstatus_t status = NC_OK;
     struct instance *inst = ctx->owner_inst;
-    
+
     JSON_Value *root_value = json_parse_file_with_comments(fname);
     ASSERT(root_value != NULL);
     if (JSONObject != json_type(root_value)) {
         log_error("config file error format : %s", fname);
         return NC_ERROR;
     }
-    
+
     JSON_Object* pools_obj = json_value_get_object(root_value);
     if (!sanity_check_pool_names_json(pools_obj)) {
     	log_error("config file invalid content : %s", cf->fname);
@@ -2501,7 +2526,7 @@ parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname)
     }
     JSON_Array* pnames = json_object_get_array(pools_obj, "pool_names");
     size_t npools = json_array_get_count(pnames);
-	
+
     for (size_t i = 0; i < npools; i++) {
         // Connect to ZK and grab all pool's conf, save to a local file.
         size_t max_path = 500;

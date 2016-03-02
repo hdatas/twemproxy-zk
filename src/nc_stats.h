@@ -59,7 +59,7 @@
     ACTION( out_queue_bytes,        STATS_GAUGE,        "current request bytes in outgoing queue")                  \
 
 #define STATS_ADDR      "0.0.0.0"
-#define STATS_PORT      22222
+#define STATS_PORT      22225
 #define STATS_INTERVAL  (10 * 1000) /* in msec */
 
 typedef enum stats_type {

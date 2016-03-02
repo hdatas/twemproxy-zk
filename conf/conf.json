@@ -2,8 +2,8 @@
   "pools":
   [
   {
-    "name" : "test-pool",
-    "proxy" : ["192.168.1.38:21000", "192.168.1.38:22001"],
+    "name" : "pool1",
+    "proxy" : ["172.16.1.22:21000", "172.16.1.22:22001"],
     "hash" : "fnv1a_64",
     "redis" : true,
     "server_retry_timeout": 2000,
@@ -12,22 +12,16 @@
     "shards" : [
       {
         "range_start" : 0,
-        "range_end" : 50000,
-        "master" :  "192.168.1.38:10010",
-        "slave" : [ "192.168.1.38:10020"]
-      },
-      {
-        "range_start" : 50001,
-        "range_end" :   100000,
-        "master" :  "192.168.1.38:10020",
-        "slave" : [ "192.168.1.38:10010"]
+        "range_end" : 100000,
+        "master" :  "172.16.1.22:10010",
+        "slave" : ["172.16.1.22:10020"]
       }
     ]
   },
 
   {
     "name" : "pool2",
-    "proxy" : ["192.168.1.47:22000"],
+    "proxy" : ["172.16.1.22:21000", "172.16.1.22:22001"],
     "hash": "fnv1a_64",
     "redis": true,
     "server_retry_timeout": 2000,
@@ -36,15 +30,9 @@
     "shards" : [
       {
         "range_start" : 0,
-        "range_end" : 9998,
-        "master" :  "localhost:12340",
-        "slave" : [ "localhost:12340",  "localhost:12340"]
-      },
-      {
-        "range_start" : 9999,
-        "range_end" : 99999,
-        "master" :  "localhost:12340",
-        "slave" : [ "localhost:12340",  "localhost:12340"]
+        "range_end" : 100000,
+        "master" :  "172.16.1.22:10030",
+        "slave" : ["172.16.1.22:10040"]
       }
     ]
   }

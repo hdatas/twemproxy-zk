@@ -93,7 +93,7 @@ string_copy(struct string *dst, const uint8_t *src, uint32_t srclen)
     }
 
     dst->len = srclen;
-    dst->data[dst->len] = '\0';
+    dst->data[dst->len + 1] = '\0';
 
     return NC_OK;
 }
