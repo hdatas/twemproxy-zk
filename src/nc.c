@@ -33,6 +33,8 @@
 #define NC_LOG_MAX          LOG_PVERB
 #define NC_LOG_PATH         NULL
 
+#define NC_UDS_PATH        "/tmp/"
+
 #define NC_STATS_PORT       STATS_PORT
 #define NC_STATS_ADDR       STATS_ADDR
 #define NC_STATS_INTERVAL   STATS_INTERVAL
@@ -64,6 +66,7 @@ static struct option long_options[] = {
     { "conf-file",      required_argument,  NULL,   'c' },
     { "proxy-addr",     required_argument,  NULL,   'x' },
     { "proxy-port",     required_argument,  NULL,   'y' },
+    { "unix-path",      required_argument,  NULL,   'u' },
     { "output",         required_argument,  NULL,   'o' },
     { "stats-port",     required_argument,  NULL,   's' },
     { "stats-interval", required_argument,  NULL,   'i' },
@@ -74,7 +77,7 @@ static struct option long_options[] = {
     { NULL,             0,                  NULL,    0  }
 };
 
-static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:z:g:l:";
+static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:u:z:g:l:";
 
 static rstatus_t
 nc_daemonize(int dump_core)
@@ -230,6 +233,8 @@ nc_show_usage(void)
         "  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: %d bytes)" CRLF
         "  -x, --proxy-addr       : set proxy listen address (MUST provide)" CRLF
         "  -y, --proxy-port       : set proxy listen port (MUST provide)" CRLF
+        "  -u, --unix-path        : set unix domain socket path (should provide"
+                                    "if proxy needs to bind to doamin socket)" CRLF
         "  -z, --zookeeper        : set zookeeper server hosts (MUST provide)" CRLF
         "  -g, --zkconfig         : set zk pool config file path (default: %s)" CRLF
         "  -l, --pool=S           : pool name (MUST provide)" CRLF
@@ -338,8 +343,9 @@ nc_set_default_options(struct instance *nci)
     nci->pool_name = NULL;
 
     nci->proxy_port = NC_PROXY_PORT;
+    nci->unix_path = NULL;
     nci->proxy_ip = NULL;         // user must pass proxy addr.
-    nci->zk_config_root = CONF_DEFAULT_CONF_ZNODE;
+    nci->zk_config_root = ZK_BASE;
     nci->zk_servers = NULL;
 }
 
@@ -402,6 +408,10 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             log_stderr("nutcracker: proxy listen port: %d",
                        nci->proxy_port);
             break;
+        case 'u':
+            nci->unix_path = optarg;
+            log_stderr("nutcracker: proxy listen adddr: %s", nci->unix_path);
+            break;
 
 	case 'D':
             describe_stats = 1;
@@ -462,7 +472,7 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             break;
 
         case 'g':
-            nci->zk_config_root= optarg;
+            nci->zk_config_root = optarg;
             log_stderr("nutcracker: use zookeeper config path %s",
                        nci->zk_config_root);
             break;
@@ -603,8 +613,8 @@ nc_run_standalone(int argc, char **argv)
         exit(0);
     }
 
-    if (nci.proxy_ip == NULL) {
-        log_stderr("must provide proxy_ip and proxy_port" CRLF);
+    if (nci.proxy_ip == NULL && nci.unix_path == NULL) {
+        log_stderr("must provide proxy_ip and proxy_port OR unix domain path" CRLF);
         nc_show_usage();
         exit(1);
     }

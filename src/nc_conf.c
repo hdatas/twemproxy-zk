@@ -53,8 +53,7 @@ static rstatus_t conf_shards_to_server_shards(struct array* cf_shards,
 static rstatus_t parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname);
 static rstatus_t parse_pool_conf_file(struct conf *cf, const char *pool_name);
 static rstatus_t conf_json_to_conf_pool(JSON_Object *pobj,
-                                        struct conf_pool *pool,
-                                        char *pool_name);
+                                        struct conf_pool *pool);
 static bool sanity_check_pool_conf_json(JSON_Object *pobj);
 static bool sanity_check_pool_names_json(JSON_Object *pobj);
 static bool sanity_check_shard_conf_json(JSON_Object *sobj);
@@ -1991,7 +1990,7 @@ conf_json_post_validate(struct conf *cf)
 static rstatus_t
 conf_json_init_pool(JSON_Object* obj,
                     struct conf_pool* pool,
-                    char *proxy_addr)
+                    struct instance *inst)
 {
     rstatus_t status;
     struct string plname;
@@ -2019,21 +2018,24 @@ conf_json_init_pool(JSON_Object* obj,
     size_t nproxies = json_array_get_count(jproxies);
     ASSERT(nproxies > 0);
     for (size_t i = 0; i < nproxies; i++) {
+        int str_len = 200;
+        char proxy_addr[str_len];
+        char proxy_str[str_len];
         const char* p = json_array_get_string(jproxies, i);
-        if (proxy_addr) {
-            if ((strlen(proxy_addr) != strlen(p)) ||
+        snprintf(proxy_addr, (size_t)str_len, "%s:%d", inst->proxy_ip,
+                inst->proxy_port);
+        if ((strlen(proxy_addr) != strlen(p)) ||
                 (strncmp(proxy_addr, p, strlen(proxy_addr)) != 0)) {
-                continue;
-            }
+            continue;
         }
         struct conf_server* cp = (struct conf_server*) array_push(&pool->proxies);
-#ifdef HAVE_LOCAL
-        const char* tmp[256];
-        snprintf(tmp, 256, "/tmp/%s", name);
-        string_to_conf_server(tmp, cp);
-#else
-        string_to_conf_server((const uint8_t*) p, cp);
-#endif
+        if (inst->unix_path == NULL){
+            snprintf(proxy_str, (size_t)str_len, "%s", proxy_addr);
+        } else {
+            snprintf(proxy_str, (size_t)str_len, "%s/%s_%d_%s", inst->unix_path,
+                    inst->proxy_ip, inst->proxy_port, name);
+        }
+        string_to_conf_server((const uint8_t*) proxy_str, cp);
         break;
     }
 
@@ -2119,9 +2121,6 @@ conf_json_parse(struct conf *cf, struct instance *nci)
 
     log_debug(LOG_INFO, "conf %s contains %d pools\n", cf->fname,  num_pools);
 
-    char proxy_addr[200];
-    sprintf(proxy_addr, "%s:%d", nci->proxy_ip, nci->proxy_port);
-
     for (size_t i = 0; i < num_pools; i++) {
         struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
         if (pool == NULL) {
@@ -2131,7 +2130,7 @@ conf_json_parse(struct conf *cf, struct instance *nci)
 
         JSON_Object* pool_obj = json_array_get_object(pools, i);
 
-        status = conf_json_init_pool(pool_obj, pool, proxy_addr);
+        status = conf_json_init_pool(pool_obj, pool, nci);
         if (status != NC_OK) {
             array_pop(&cf->pool);
             continue;
@@ -2422,9 +2421,9 @@ conf_shards_to_server_shards(struct array* cf_shards,
 
 
 // In renewed ZK scheme, each pool has its topology stored in znode
-// "/distkv/proxy/<pool name>". All available pools are under /distkv/proxy/proxy_ip:proxy_port
+// "/distkv/<pool name>". All available pools are under /distkv/proxy/proxy_ip:proxy_port
 //
-// This method reads every pool's conf from znode "/distkv/proxy/<pool name>,
+// This method reads every pool's conf from znode "/distkv/<pool name>,
 // and init a "conf" object.
 struct conf*
 get_conf_from_zk(char* zkservers, struct context *ctx)
@@ -2441,7 +2440,7 @@ get_conf_from_zk(char* zkservers, struct context *ctx)
 
   size_t max_path = 500;
   char path[max_path];
-  snprintf(path, max_path, "%s/%s:%d", inst->zk_config_root, inst->proxy_ip,
+  snprintf(path, max_path, "%s/%s/%s:%d", inst->zk_config_root, "proxy", inst->proxy_ip,
 	inst->proxy_port);
 
   // Connect to ZK, grab all pool names
@@ -2459,8 +2458,8 @@ get_conf_from_zk(char* zkservers, struct context *ctx)
   }
   memset(path, 0, max_path);
   // Now, save pool's conf to a disk file.
-  sprintf(path, "%s/%s:%d", CONF_DEFAULT_FILE_SAVE_PATH, inst->proxy_ip,
-  inst->proxy_port);
+  sprintf(path, "%s/%s_%d/%s", CONF_DEFAULT_FILE_SAVE_PATH, inst->proxy_ip,
+  inst->proxy_port, "pools");
   nc_write_file(path, buf, conf_len);
 
   rstatus_t status = NC_OK;
@@ -2487,9 +2486,14 @@ get_conf_from_zk(char* zkservers, struct context *ctx)
     struct conf_pool* pool = (struct conf_pool*) array_get(&cf->pool, i);
     int str_len = 200;
     char proxy_str[str_len];
-    snprintf(proxy_str, (size_t)str_len, "%s:%d",
-             inst->proxy_ip, inst->proxy_port);
     struct conf_server* cp = (struct conf_server*)array_push(&pool->proxies);
+    if (inst->unix_path == NULL){
+        snprintf(proxy_str, (size_t)str_len, "%s:%d",
+                inst->proxy_ip, inst->proxy_port);
+    } else {
+        snprintf(proxy_str, (size_t)str_len, "%s/%s_%d_%s", inst->unix_path,
+                inst->proxy_ip, inst->proxy_port, pool->name.data);
+    }
     string_to_conf_server((const uint8_t*)proxy_str, cp);
     conf_server_to_conf_listen(cp, &pool->listen);
   }
@@ -2520,9 +2524,9 @@ parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname)
 
     JSON_Object* pools_obj = json_value_get_object(root_value);
     if (!sanity_check_pool_names_json(pools_obj)) {
-    	log_error("config file invalid content : %s", cf->fname);
-    	json_value_free(root_value);
-    	return NC_ERROR;
+        log_error("config file invalid content : %s", cf->fname);
+        json_value_free(root_value);
+        return NC_ERROR;
     }
     JSON_Array* pnames = json_object_get_array(pools_obj, "pool_names");
     size_t npools = json_array_get_count(pnames);
@@ -2537,25 +2541,26 @@ parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname)
         char buf[buflen];
         int sync = 1;
         int watch = 0;
-	snprintf(path, max_path, "%s/%s", inst->zk_config_root, poolname);
+        snprintf(path, max_path, "%s/%s/%s", inst->zk_config_root, "pools", poolname);
         int conf_len = ZKGet(ctx->zkh, path, buf, buflen, watch, sync);
         if (conf_len <= 0 || conf_len >= buflen) {
-       	    log_error("pool \"%s \"conf incorrect: %s, ret %d",
-       	    poolname, path, conf_len);
+            log_error("pool \"%s \"conf incorrect: %s, ret %d",
+                    poolname, path, conf_len);
             ZKClose(ctx->zkh);
             ctx->zkh = NULL;
-    	    json_value_free(root_value);
+            json_value_free(root_value);
             return NC_ERROR;
-       	}
+        }
 
         // Now, save pool's conf to a disk file.
-        sprintf(path, "%s-pool-%s", CONF_DEFAULT_FILE_SAVE_PATH, poolname);
+        sprintf(path, "%s/%s_%d/%s", CONF_DEFAULT_FILE_SAVE_PATH,
+                inst->proxy_ip, inst->proxy_port, poolname);
         nc_write_file(path, buf, conf_len);
-	cf->fname = path;
+        cf->fname = path;
         // Read this pool's config file, init a conf object.
         status = parse_pool_conf_file(cf, poolname);
         if (status != NC_OK) {
-    	  json_value_free(root_value);
+            json_value_free(root_value);
           return NC_ERROR;
         }
     }
@@ -2593,7 +2598,7 @@ parse_pool_conf_file(struct conf *cf, const char *pool_name)
     memset(pool, 0, sizeof(struct conf_pool));
 
     // Populate conf_pool obj from the json obj.
-    status = conf_json_to_conf_pool(pool_obj, pool, pool_name);
+    status = conf_json_to_conf_pool(pool_obj, pool);
     if (status != NC_OK) {
       array_pop(&cf->pool);
     } else {
@@ -2606,15 +2611,18 @@ parse_pool_conf_file(struct conf *cf, const char *pool_name)
 
 // Convert the configuration in a json obj to a conf_pool obj.
 static rstatus_t
-conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool, char *pool_name)
+conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool)
 {
   rstatus_t status;
   struct string plname;
 
+  const char* name = json_object_get_string(pobj, "name");
+  const char* id = json_object_get_string(pobj, "id");
+
   string_init(&plname);
   status = string_copy(&plname,
-                       (uint8_t*)pool_name,
-                       (uint32_t)strlen(pool_name));
+                       (uint8_t*)name,
+                       (uint32_t)strlen(name));
 
   // Init the pool to default value.
   conf_pool_init(pool, &plname);
@@ -2625,8 +2633,6 @@ conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool, char *pool_nam
   pool->redis_db = 0;
   pool->hash = HASH_MURMUR;
 
-  const char* name = json_object_get_string(pobj, "name");
-  const char* id = json_object_get_string(pobj, "id");
 
   // Get this pool's hash value range.
   pool->shard_range_min = (uint32_t)atoi(json_object_get_string(pobj, "pool_begin"));
@@ -3032,7 +3038,7 @@ update_server_shards_from_conf_json(JSON_Object *pobj,
   // Convert the json obj to a conf_pool object.
   struct conf_pool cfpool;
   memset(&cfpool, 0, sizeof(struct conf_pool));
-  rv = conf_json_to_conf_pool(pobj, &cfpool, (char*)pool_name);
+  rv = conf_json_to_conf_pool(pobj, &cfpool);
 
   // Compare the conf_pool against server_pool to find difference.
   struct conf_shard *conf_sd = NULL;
@@ -3243,11 +3249,11 @@ add_watcher_on_conf_pool(struct context *ctx)
 
   // For now, we know each context has only one pool.
   for (uint32_t i = 0; i < array_n(pools); i++ ) {
+    struct server_pool *sp = (struct server_pool *)array_get(pools, i);
 
     // Watch on the pool's config znode.
-    snprintf(zkpath, pathlen, "%s/%s", inst->zk_config_root, inst->pool_name);
-
-    struct server_pool *sp = (struct server_pool *)array_get(pools, i);
+    snprintf(zkpath, pathlen, "%s/%s/%s", inst->zk_config_root, "pools",
+            sp->name.data);
     int rc = ZKSetExistsWatch(ctx->zkh, zkpath, conf_pool_watcher, sp);
     if (rc != ZOK) {
       log_error("failed to set watcher on znode %s", zkpath);

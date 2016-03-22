@@ -166,6 +166,9 @@ struct instance {
     char            *proxy_ip;                   // proxy listen address
     uint16_t        proxy_port;                  // proxy listen port
 
+    char            *unix_path;                  /* proxy listen on unix domain
+                                                    socket */
+
     char            *pool_name;                  // this instance maps to this backend pool.
 };
 
