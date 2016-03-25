@@ -87,13 +87,13 @@ string_copy(struct string *dst, const uint8_t *src, uint32_t srclen)
     ASSERT(dst->len == 0 && dst->data == NULL);
     ASSERT(src != NULL && srclen != 0);
 
-    dst->data = nc_strndup(src, srclen);
+    dst->data = nc_strndup(src, srclen + 1);
     if (dst->data == NULL) {
         return NC_ENOMEM;
     }
 
     dst->len = srclen;
-    dst->data[dst->len + 1] = '\0';
+    dst->data[dst->len] = '\0';
 
     return NC_OK;
 }
