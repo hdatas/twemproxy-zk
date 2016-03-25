@@ -1,6 +1,6 @@
-#include <zookeeper.h>
+#include <zookeeper/zookeeper.h>
 //#include <zookeeper_log.h>
-#include <proto.h>
+//#include <proto.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
