@@ -17,7 +17,7 @@
 
 #include <nc_core.h>
 #include <nc_server.h>
-
+#include <stdio.h>
 struct msg *
 req_get(struct conn *conn)
 {
@@ -111,12 +111,18 @@ req_put(struct msg *msg)
     // Record the request's latency
     if (msg->start_ts > 0) {
       struct conn *c_conn = (struct conn*)msg->owner;
-      struct server_pool *sp = (struct server_pool*)c_conn->owner;
-      struct context *ctx = sp->ctx;
-      int64_t lat_us = nc_usec_now() - msg->start_ts;
-      pthread_mutex_lock(&ctx->histo_lock);
-      hdr_record_value(ctx->histogram, lat_us);
-      pthread_mutex_unlock(&ctx->histo_lock);
+      if (c_conn){
+	      struct server_pool *sp = (struct server_pool*)c_conn->owner;
+	      if (sp){		
+		      struct context *ctx = sp->ctx;
+		      if (ctx){
+			      int64_t lat_us = nc_usec_now() - msg->start_ts;
+			      pthread_mutex_lock(&ctx->histo_lock);
+			      hdr_record_value(ctx->histogram, lat_us);
+			      pthread_mutex_unlock(&ctx->histo_lock);
+		      }
+	      }
+      }
     }
 
     pmsg = msg->peer;
@@ -603,6 +609,11 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
     kpos = array_get(msg->keys, 0);
     key = kpos->start;
     keylen = (uint32_t)(kpos->end - kpos->start);
+    //char keyt[64];
+    //memset(keyt, 0, sizeof(keyt));
+    //keyt[keylen] = '\0';
+    //memcpy(keyt, key, keylen);
+    //printf("incoming key: %s\n",keyt);
 
     pthread_mutex_lock(&pool->lock);
     s_conn = server_pool_conn(ctx, c_conn->owner, key, keylen);
