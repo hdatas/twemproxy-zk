@@ -25,6 +25,7 @@
 
 #include <nc_core.h>
 #include <hashkit/nc_hashkit.h>
+#include <parson/parson.h>
 
 #define CONF_OK             (void *) NULL
 #define CONF_ERROR          (void *) "has an invalid value"
@@ -175,5 +176,7 @@ struct conf *create_pool_conf_from_file(char *filepath, struct context *ctx);
 
 struct conf *get_conf_from_zk(char* zkservers, struct context *ctx);
 rstatus_t add_watcher_on_conf_pool(struct context *ctx);
+
+bool hcdsetbuf(char *buffer, unsigned len, struct server_pool *pool);
 
 #endif

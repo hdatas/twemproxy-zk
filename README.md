@@ -4,6 +4,8 @@
 
 ## Build
 
+Before building twemproxy, make sure "Zookeeper C client library" is built and installed under /usr/local/lib.
+
 To build twemproxy from [distribution tarball](https://drive.google.com/open?id=0B6pVMMV5F5dfMUdJV25abllhUWM&authuser=0):
 
     $ ./configure
@@ -69,6 +71,10 @@ A quick checklist:
       -i, --stats-interval=N : set stats aggregation interval in msec (default: 30000 msec)
       -p, --pid-file=S       : set pid file (default: off)
       -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+
+## Dynamic configuration changes through remote jedis client
+
+     New redis command: hcdsetproxy pool_name "conf.json in strings"
 
 ## Zero Copy
 

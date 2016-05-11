@@ -58,7 +58,8 @@ libnutcracker_la_SOURCES =			\
 	nc_array.c nc_array.h		\
 	nc_util.c nc_util.h		\
 	nc_queue.h			\
-  zkutil.c zkutil.h
+	zkutil.c zkutil.h		\
+	nc_hcdapi.c nc_hcdapi.h
 
 libnutcracker_la_LIBADD = \
                           $(top_builddir)/src/event/libevent.la \

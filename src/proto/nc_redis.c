@@ -21,10 +21,13 @@
 
 #include <nc_core.h>
 #include <nc_proto.h>
+#include <nc_hcdapi.h>
 
 #define RSP_STRING(ACTION)                                                          \
     ACTION( ok,               "+OK\r\n"                                           ) \
     ACTION( pong,             "+PONG\r\n"                                         ) \
+    ACTION( hcdproxy,         "+HCDPROXY\r\n"                                     ) \
+    ACTION( hcdproxy_err,     "+HCDPROXY ERROR\r\n"                               ) \
     ACTION( invalid_password, "-ERR invalid password\r\n"                         ) \
     ACTION( auth_required,    "-NOAUTH Authentication required\r\n"               ) \
     ACTION( no_password,      "-ERR Client sent AUTH, but no password is set\r\n" ) \
@@ -90,6 +93,7 @@ redis_arg0(struct msg *r)
     case MSG_REQ_REDIS_ZCARD:
     case MSG_REQ_REDIS_PFCOUNT:
     case MSG_REQ_REDIS_AUTH:
+    case MSG_REQ_REDIS_HCDGETPROXY:
         return true;
 
     default:
@@ -133,6 +137,7 @@ redis_arg1(struct msg *r)
     case MSG_REQ_REDIS_ZRANK:
     case MSG_REQ_REDIS_ZREVRANK:
     case MSG_REQ_REDIS_ZSCORE:
+    case MSG_REQ_REDIS_HCDSETPROXY:
         return true;
 
     default:
@@ -1041,6 +1046,18 @@ redis_parse_req(struct msg *r)
 
                 if (str11icmp(m, 'z', 'r', 'a', 'n', 'g', 'e', 'b', 'y', 'l', 'e', 'x')) {
                     r->type = MSG_REQ_REDIS_ZRANGEBYLEX;
+                    break;
+                }
+
+                if (str11icmp(m, 'h', 'c', 'd', 'g', 'e', 't', 'p', 'r', 'o', 'x', 'y')) {
+                    r->type = MSG_REQ_REDIS_HCDGETPROXY;
+                    r->noforward = 1;
+                    break;
+                }
+
+                if (str11icmp(m, 'h', 'c', 'd', 's', 'e', 't', 'p', 'r', 'o', 'x', 'y')) {
+                    r->type = MSG_REQ_REDIS_HCDSETPROXY;
+                    r->noforward = 1;
                     break;
                 }
 
@@ -2691,6 +2708,7 @@ redis_reply(struct msg *r)
 {
     struct conn *c_conn;
     struct msg *response = r->peer;
+    unsigned buflen=0;
 
     ASSERT(response != NULL && response->owner != NULL);
 
@@ -2706,6 +2724,14 @@ redis_reply(struct msg *r)
     switch (r->type) {
     case MSG_REQ_REDIS_PING:
         return msg_append(response, rsp_pong.data, rsp_pong.len);
+    case MSG_REQ_REDIS_HCDGETPROXY:
+        return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
+    case MSG_REQ_REDIS_HCDSETPROXY:
+        buflen = (STAILQ_FIRST(&r->mhdr))->last-(STAILQ_FIRST(&r->mhdr))->pos;
+        if (hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, c_conn->owner))
+            return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
+        else
+            return msg_append(response, rsp_hcdproxy_err.data, rsp_hcdproxy_err.len);
 
     default:
         NOT_REACHED();

@@ -164,6 +164,8 @@ typedef enum msg_parse_result {
     ACTION( REQ_REDIS_EVAL )                   /* redis requests - eval */                          \
     ACTION( REQ_REDIS_EVALSHA )                                                                     \
     ACTION( REQ_REDIS_PING )                   /* redis requests - ping/quit */                     \
+    ACTION( REQ_REDIS_HCDGETPROXY )            /* redis requests - HCD Proxy */                     \
+    ACTION( REQ_REDIS_HCDSETPROXY )            /* redis requests - HCD Proxy */                     \
     ACTION( REQ_REDIS_QUIT)                                                                         \
     ACTION( REQ_REDIS_AUTH)                                                                         \
     ACTION( REQ_REDIS_SELECT)                  /* only during init */                               \

@@ -1521,7 +1521,7 @@ conf_destroy(struct conf *cf)
     }
     array_deinit(&cf->arg);
 
-    //int i = 0;
+    int i = 0;
     while (array_n(&cf->pool) != 0) {
         log_debug(LOG_NOTICE, "deinit conf pool %d", i++);
         conf_pool_deinit(array_pop(&cf->pool));
@@ -3265,4 +3265,26 @@ add_watcher_on_conf_pool(struct context *ctx)
   }
 
   return rv;
+}
+
+bool hcdsetbuf(char *buf, unsigned len, struct server_pool *sp) {
+    ASSERT(buf != NULL);
+    // convert the content to a json obj.
+    JSON_Value *jroot = json_parse_string_with_comments(buf);
+    if (!jroot || (JSONObject != json_type(jroot))) {
+        log_error("pool config error format : %s, len: %d", buf, len);
+        return false;
+    }
+
+    JSON_Object* pool_obj = json_value_get_object(jroot);
+    if (!sanity_check_pool_conf_json(pool_obj)) {
+        log_error("pool config invalid format: %s", buf);
+        return false;
+    }
+
+    // Apply the updated pool conf to server_pool.
+    pthread_mutex_lock(&sp->lock);
+    update_server_shards_from_conf_json(pool_obj, &sp->shards, sp);
+    pthread_mutex_unlock(&sp->lock);
+    return true;
 }
