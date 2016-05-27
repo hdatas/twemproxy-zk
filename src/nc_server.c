@@ -740,10 +740,10 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     }
 
     //uint32_t hv = pool->key_hash((char *)key, keylen);
-    //uint32_t hv = hash_murmur((char *)key, keylen);
+    uint32_t hv = hash_murmur((char *)key, keylen);
     //uint32_t hv = hash_crc32((char *)key, keylen);
     //uint32_t hv = hash_hsieh((char *)key, keylen);
-    uint32_t hv = hash_jenkins((char *)key, keylen);
+    //uint32_t hv = hash_jenkins((char *)key, keylen);
 
     hv = hv % pool->shard_range_max;
     if (hv < pool->shard_range_min) {

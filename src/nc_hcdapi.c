@@ -30,6 +30,7 @@ bool setparser(char *buffer, char **key, char **value) {
           break;
         words[count++] = aPtr;
     }
+
     /* skip the last "\0" of keybuf, if needed */
     if (count<12) {    
         while (*(++keybuf) != NULL); 
@@ -51,8 +52,12 @@ bool setparser(char *buffer, char **key, char **value) {
 
 bool hcdset(char *buffer, unsigned len, struct server_pool *pool) {
     char *keybuf, *valuebuf;
+    printf("buffer before %s\n",buffer);
 
-    ASSERT(true==setparser(buffer, &keybuf, &valuebuf));
+    if (false==setparser(buffer, &keybuf, &valuebuf)) {
+       return false;
+    }
+//    ASSERT(true==setparser(buffer, &keybuf, &valuebuf));
     log_debug(LOG_NOTICE, "Key   = %s\nValue = %s\n", keybuf, valuebuf);
 
     return hcdsetbuf(valuebuf, len, pool);

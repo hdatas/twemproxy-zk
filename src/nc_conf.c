@@ -3270,7 +3270,9 @@ add_watcher_on_conf_pool(struct context *ctx)
 bool hcdsetbuf(char *buf, unsigned len, struct server_pool *sp) {
     ASSERT(buf != NULL);
     // convert the content to a json obj.
+    printf("before jason format convert buffer %s\n", buf);
     JSON_Value *jroot = json_parse_string_with_comments(buf);
+    printf("before jason format check buffer %s\n", buf);
     if (!jroot || (JSONObject != json_type(jroot))) {
         log_error("pool config error format : %s, len: %d", buf, len);
         return false;
