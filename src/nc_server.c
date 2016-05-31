@@ -1192,7 +1192,7 @@ server_pool_init(struct array *server_pool, struct array *conf_pool,
 {
     rstatus_t status;
     uint32_t npool;
-
+printf("----------------------server_pool_init\n");
     npool = array_n(conf_pool);
     ASSERT(npool != 0);
     ASSERT(array_n(server_pool) == 0);
@@ -1234,7 +1234,8 @@ server_pool_init(struct array *server_pool, struct array *conf_pool,
 
     // Set a watcher to each shard's master server status.
     //set_watch_on_master_status(server_pool, ctx);
-    add_watcher_on_conf_pool(ctx);
+    if (ctx->zkh != NULL)
+        add_watcher_on_conf_pool(ctx);
 
     log_debug(LOG_DEBUG, "init %"PRIu32" pools", npool);
 

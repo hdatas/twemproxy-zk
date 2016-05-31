@@ -26,9 +26,11 @@
 #include <nc_signal.h>
 #include <nc.h>
 
-#define NC_CONF_PATH        "conf/nutcracker.yml"
+//#define NC_CONF_PATH        "conf/nutcracker.yml"
+#define NC_CONF_PATH        "conf/proxy-POOL1"
 
-#define NC_LOG_DEFAULT      LOG_NOTICE
+#define NC_LOG_DEFAULT      LOG_VVVERB
+
 #define NC_LOG_MIN          LOG_EMERG
 #define NC_LOG_MAX          LOG_PVERB
 #define NC_LOG_PATH         NULL
@@ -335,6 +337,7 @@ nc_set_default_options(struct instance *nci)
     }
     nci->hostname[NC_MAXHOSTNAMELEN - 1] = '\0';
 
+printf("===set default name:%s\n", nci->hostname);
     nci->mbuf_chunk_size = NC_MBUF_SIZE;
     nci->conf_filename = NC_CONF_PATH;
     nci->pid = (pid_t)-1;
@@ -504,7 +507,7 @@ nc_get_options(int argc, char **argv, struct instance *nci)
 
         default:
             log_stderr("nutcracker: invalid option -- '%c'", optopt);
-            return NC_ERROR;
+            //return NC_ERROR;
 
         }
     }
@@ -613,12 +616,12 @@ nc_run_standalone(int argc, char **argv)
         exit(0);
     }
 
+#if 0
     if (nci.proxy_ip == NULL && nci.unix_path == NULL) {
         log_stderr("must provide proxy_ip and proxy_port OR unix domain path" CRLF);
         nc_show_usage();
         exit(1);
     }
-#if 0
     if (nci.pool_name == NULL) {
         log_stderr("must provide pool_name" CRLF);
         nc_show_usage();

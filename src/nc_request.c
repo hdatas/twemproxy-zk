@@ -690,7 +690,7 @@ req_recv_done(struct context *ctx, struct conn *conn, struct msg *msg,
             return;
         }
 
-        status = msg->reply(msg);
+        status = msg->reply(msg, ctx);
         if (status != NC_OK) {
             conn->err = errno;
             return;

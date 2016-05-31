@@ -177,6 +177,12 @@ struct conf *create_pool_conf_from_file(char *filepath, struct context *ctx);
 struct conf *get_conf_from_zk(char* zkservers, struct context *ctx);
 rstatus_t add_watcher_on_conf_pool(struct context *ctx);
 
-bool hcdsetbuf(char *buffer, unsigned len, struct server_pool *pool);
+struct conf *conf_open(char *filename);
+void conf_json_dump(struct conf *cf);
+rstatus_t conf_json_init_pool(JSON_Object* obj, struct conf_pool* pool,
+                    struct instance *inst);
+rstatus_t conf_json_post_validate(struct conf *cf);
+bool hcdsetbuf(char *buffer, unsigned len, struct server_pool *pool,
+               struct msg *msg, struct context *ctx);
 
 #endif

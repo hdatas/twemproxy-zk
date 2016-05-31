@@ -339,9 +339,12 @@ conf_pool_each_transform(void *elem, void *data)
     struct array *server_pool = data;
     struct server_pool *sp;
 
-    ASSERT(cp->valid);
-
+printf("====wgu=== conf_pool_each_transform cp_name:%s, sp:%08x, cp->valid:%d, cp:%08x\n", 
+       cp->name.data, server_pool, cp->valid, cp);
+//    ASSERT(cp->valid);
     sp = array_push(server_pool);
+printf("====wgu===2 conf_pool_each_transform sp:%08x, cp->valid:%d, cp:%08x, n_sp:%d\n", 
+       server_pool, cp->valid, cp, array_n(server_pool));
     ASSERT(sp != NULL);
 
     sp->idx = array_idx(server_pool, sp);
@@ -860,13 +863,13 @@ conf_parse(struct conf *cf)
     return NC_OK;
 }
 
-static struct conf *
+struct conf *
 conf_open(char *filename)
 {
     rstatus_t status;
     struct conf *cf;
     FILE *fh;
-
+printf("======wgu==conf_open\n");
     fh = fopen(filename, "r");
     if (fh == NULL) {
         log_error("conf: failed to open configuration '%s': %s",
@@ -1945,7 +1948,7 @@ conf_json_pre_validate(struct conf *cf)
 }
 
 // Validate conf contents after conf-file is loaded.
-static rstatus_t
+rstatus_t
 conf_json_post_validate(struct conf *cf)
 {
   uint32_t npools = array_n(&cf->pool);
@@ -1987,7 +1990,7 @@ conf_json_post_validate(struct conf *cf)
 //      "name": pool name
 //      "shard_range": key hash value range in this shard, [low, high)
 //      "shards" : a list of shards.
-static rstatus_t
+rstatus_t
 conf_json_init_pool(JSON_Object* obj,
                     struct conf_pool* pool,
                     struct instance *inst)
@@ -1999,12 +2002,14 @@ conf_json_init_pool(JSON_Object* obj,
     //
     // init pool name.
     string_init(&plname);
+int numobj1 = json_object_get_count(obj);
+//    size_t numobj = json_array_get_count(obj);
     const char* name = json_object_get_string(obj, "name");
-    status = string_copy(&plname, (uint8_t*)name, (uint32_t)strlen(name));
+printf("===wgu==inside 4 name=%s, pool_obj:%08x, pool:%08x, num of obj:%08x\n", name, (int)obj, (int)pool, numobj1);
+    status = string_copy(&plname, name, (uint32_t)strlen(name));
     if (status != NC_OK) {
       return status;
     }
-
     // Init the pool to default value.
     conf_pool_init(pool, &plname);
     string_deinit(&plname);
@@ -2016,18 +2021,34 @@ conf_json_init_pool(JSON_Object* obj,
     JSON_Array*  jproxies = json_object_get_array(obj, "proxy");
     ASSERT(jproxies != NULL);
     size_t nproxies = json_array_get_count(jproxies);
+printf("===wgu===proxy#:%d\n", nproxies);
     ASSERT(nproxies > 0);
     for (size_t i = 0; i < nproxies; i++) {
         int str_len = 200;
         char proxy_addr[str_len];
         char proxy_str[str_len];
         const char* p = json_array_get_string(jproxies, i);
-        snprintf(proxy_addr, (size_t)str_len, "%s:%d", inst->proxy_ip,
-                inst->proxy_port);
-        if ((strlen(proxy_addr) != strlen(p)) ||
-                (strncmp(proxy_addr, p, strlen(proxy_addr)) != 0)) {
-            continue;
+
+        if (*p != NULL) {
+            inst->proxy_ip   = strsep(&p, ":");
+            inst->proxy_port = atoi(strsep(&p, ":"));
+printf("===wgu===proxy: ip %s, port %d\n", inst->proxy_ip, inst->proxy_port);
+        } 
+        if (inst->proxy_ip != NULL) {
+            snprintf(proxy_addr, (size_t)str_len, "%s:%d", inst->proxy_ip,
+                    inst->proxy_port);
+//printf("===wgu===proxy: cmd:%s, file:%s\n", proxy_addr, p);
+       //     if ((strlen(proxy_addr) != strlen(p)) ||
+       //           (strncmp(proxy_addr, p, strlen(proxy_addr)) != 0)) {
+       //         continue;
+       //     } 
+        } else {
+            log_debug(LOG_NOTICE, "missing proxy ip:port\n");
+            array_deinit(&pool->proxies);
+            string_deinit(&pool->name);
+            return NC_ERROR;
         }
+//printf("====wgu==pool->proxies: %s\n", &pool->proxies);
         struct conf_server* cp = (struct conf_server*) array_push(&pool->proxies);
         if (inst->unix_path == NULL){
             snprintf(proxy_str, (size_t)str_len, "%s", proxy_addr);
@@ -2035,6 +2056,7 @@ conf_json_init_pool(JSON_Object* obj,
             snprintf(proxy_str, (size_t)str_len, "%s/%s_%d_%s", inst->unix_path,
                     inst->proxy_ip, inst->proxy_port, name);
         }
+printf("===wgu== proxy_str:%s, cp:%08x\n", proxy_str, cp);
         string_to_conf_server((const uint8_t*) proxy_str, cp);
         break;
     }
@@ -2048,6 +2070,7 @@ conf_json_init_pool(JSON_Object* obj,
         string_deinit(&pool->name);
         return NC_ERROR;
     } else {
+printf("===wgu==to conf_server_to_conf_listen.\n");
         // init the "listen" address, which is proxy.
         conf_server_to_conf_listen(array_get(&pool->proxies, 0),
                                    &pool->listen);
@@ -2055,18 +2078,24 @@ conf_json_init_pool(JSON_Object* obj,
 
     // hash value range: [min, max]
     JSON_Array * hv_range = json_object_get_array(obj, "shard_range");
-    ASSERT(hv_range != NULL);
+if (hv_range>0) {
+//    ASSERT(hv_range != NULL);
     ASSERT(json_array_get_count(hv_range) == 2);
-    pool->shard_range_min = (uint32_t)json_array_get_number(hv_range, 0);
-    pool->shard_range_max = (uint32_t)json_array_get_number(hv_range, 1);
+    pool->shard_range_min = atoi(json_array_get_string(hv_range, 0));
+    pool->shard_range_max = atoi(json_array_get_string(hv_range, 1));
+printf("======wgu==shard min:%d, max:%d\n", pool->shard_range_min, pool->shard_range_max);
     ASSERT(pool->shard_range_min < pool->shard_range_max);
-
+} else {
+    pool->shard_range_min = 0;
+    pool->shard_range_max = 1000000000;
+printf("====wgu===shard min:%d, max:%d\n", 0, 1000000000);
+}
     // Init shards.
     status = array_init(&pool->shards, CONF_DEFAULT_SHARDS,
                         sizeof(struct conf_shard));
     JSON_Array* jshards = json_object_get_array(obj, "shards");
     size_t nshards = json_array_get_count(jshards);
-    ASSERT(nshards > 0);
+    //ASSERT(nshards > 0);
 
     for (size_t i = 0; i < nshards; i++) {
         // Add a shard into pool.
@@ -2078,26 +2107,28 @@ conf_json_init_pool(JSON_Object* obj,
         memset(cfshard, 0, sizeof(struct conf_shard));
 
         JSON_Object* js = json_array_get_object(jshards, i);
-        cfshard->range_begin = (uint32_t)json_object_get_number(js, "range_start");
-        cfshard->range_end = (uint32_t)json_object_get_number(js, "range_end");
+        cfshard->range_begin = (uint32_t)(atoi)(json_object_get_string(js, "shard_begin"));
+        cfshard->range_end = (uint32_t)(atoi)(json_object_get_string(js, "shard_end"));
 
+printf("shard start:%d, end:%d\n", cfshard->range_begin, cfshard->range_end);
         // Add master / slave conf_servers in each conf_shard.
-        const char* jsmaster = json_object_get_string(js, "master");
+        const char* jsmaster = json_object_get_string(js, "master_target");
         string_to_conf_server((const uint8_t*)jsmaster, &cfshard->master);
 
-        JSON_Array* jsslaves = json_object_get_array(js, "slave");
+        JSON_Array* jsslaves = json_object_get_array(js, "slave_target");
         size_t nslaves = json_array_get_count(jsslaves);
-        ASSERT(nslaves > 0);
-        status = array_init(&cfshard->slaves, CONF_DEFAULT_SLAVES,
-                            sizeof(struct conf_server));
+        if (nslaves>0) {
+          status = array_init(&cfshard->slaves, CONF_DEFAULT_SLAVES,
+                              sizeof(struct conf_server));
 
-        for (size_t s = 0; s < nslaves; s++) {
-          const char* slvstr = json_array_get_string(jsslaves, s);
-          struct conf_server* slv = array_push(&cfshard->slaves);
-          string_to_conf_server((const uint8_t*)slvstr, slv);
-          //struct string* slv = (struct string*) array_push(&cfshard->slaves);
-          //string_init(slv);
-          //string_copy(slv, (uint8_t*)slvstr, (uint32_t)strlen(slvstr));
+          for (size_t s = 0; s < nslaves; s++) {
+            const char* slvstr = json_array_get_string(jsslaves, s);
+            struct conf_server* slv = array_push(&cfshard->slaves);
+            string_to_conf_server((const uint8_t*)slvstr, slv);
+            //struct string* slv = (struct string*) array_push(&cfshard->slaves);
+            //string_init(slv);
+            //string_copy(slv, (uint8_t*)slvstr, (uint32_t)strlen(slvstr));
+          }
         }
     }
 
@@ -2108,9 +2139,10 @@ static rstatus_t
 conf_json_parse(struct conf *cf, struct instance *nci)
 {
     rstatus_t status = NC_OK;
-
+    
     JSON_Value *root_value = json_parse_file_with_comments(cf->fname);
     ASSERT(root_value != NULL);
+    printf("====wgu===conf %s contains xxx pools\n", (char*)cf->fname);
 
     // Top level is a JSON object.
     // Mandatory fields:
@@ -2118,9 +2150,14 @@ conf_json_parse(struct conf *cf, struct instance *nci)
     JSON_Object* root_obj = json_value_get_object(root_value);
     JSON_Array* pools = json_object_get_array(root_obj, "pools");
     size_t num_pools = json_array_get_count(pools);
-
+//printf("===wgu===num_pools:%d\n", num_pools);
+//    if (num_pools == NULL) {
+//        num_pools = 1;
+    //    pools = json_value_get_array
+//    }
     log_debug(LOG_INFO, "conf %s contains %d pools\n", cf->fname,  num_pools);
 
+printf("====wgu===conf_json_parse, pool: %s, pools: %08x\n", cf->pool, (int)pools);
     for (size_t i = 0; i < num_pools; i++) {
         struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
         if (pool == NULL) {
@@ -2128,14 +2165,20 @@ conf_json_parse(struct conf *cf, struct instance *nci)
             break;
         }
 
+printf("====wgu===conf_json_parse, pool=%08x, cf->pool: %s\n", (int)pool, cf->pool);
         JSON_Object* pool_obj = json_array_get_object(pools, i);
-
+        int nobj2 = json_object_get_count(pool_obj);
+//pool_obj->count;
+// pick the first element from json array
+printf("====wgu 2===before conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x, num-obj:%d\n", (int)pool_obj, pool, pools, nobj2);
         status = conf_json_init_pool(pool_obj, pool, nci);
         if (status != NC_OK) {
+printf("====wgu 2===conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x\n", (int)pool_obj, pool, pools);
             array_pop(&cf->pool);
             continue;
         }
         pool->valid = 1;
+printf("====wgu 3===conf_json_parse, pool_obj=%08x, pools: %08x\n", (int)pool_obj, pools);
     }
     json_value_free(root_value);
 
@@ -2144,7 +2187,7 @@ conf_json_parse(struct conf *cf, struct instance *nci)
 
 
 
-static void
+void
 conf_json_dump(struct conf *cf)
 {
     uint32_t npool = array_n(&cf->pool);
@@ -2240,7 +2283,7 @@ conf_json_create(char *filename, struct instance* nci)
 {
     rstatus_t status = NC_OK;
     struct conf *cf;
-
+printf("===wgu=json create: %s\n", filename);
     cf = conf_open(filename);
     if (cf == NULL) {
         return NULL;
@@ -2249,6 +2292,9 @@ conf_json_create(char *filename, struct instance* nci)
     fclose(cf->fh);
     cf->fh = NULL;
     array_null(&cf->arg);
+        // Read this pool's config file, init a conf object.
+//        status = parse_pool_conf_file(cf, "pool1");
+printf("===wgu=json not create ok0: %d\n", status);
 
     // Validate conf file format correctness.
     status = conf_json_pre_validate(cf);
@@ -2257,18 +2303,21 @@ conf_json_create(char *filename, struct instance* nci)
 
     }
 
+printf("===wgu=json create ok1: %d, NC_OK:%d\n", status, NC_OK);
     // Parse conf file.
     status = conf_json_parse(cf, nci);
     if (status != NC_OK) {
         goto error;
     }
 
+printf("===wgu=json create ok2: %d\n", status);
     // validate parsed configuration
     status = conf_json_post_validate(cf);
     if (status != NC_OK) {
         goto error;
     }
 
+printf("===wgu=json create ok3: %d\n", status);
     cf->valid = 1;
     conf_json_dump(cf);
 
@@ -2429,7 +2478,7 @@ struct conf*
 get_conf_from_zk(char* zkservers, struct context *ctx)
 {
   struct instance *inst = ctx->owner_inst;
-
+printf("---------wgu-- zk context:%08x\n", ctx);
   if (ctx->zkh == NULL) {
     ctx->zkh = ZKConnect(zkservers);
     if (!ctx->zkh) {
@@ -2514,6 +2563,7 @@ parse_pools_conf_file(struct context *ctx, struct conf *cf, const char *fname)
 {
     rstatus_t status = NC_OK;
     struct instance *inst = ctx->owner_inst;
+printf("====wgu==parse_poolssssss_conf_file ctx:%08x\n", ctx);
 
     JSON_Value *root_value = json_parse_file_with_comments(fname);
     ASSERT(root_value != NULL);
@@ -2576,19 +2626,23 @@ parse_pool_conf_file(struct conf *cf, const char *pool_name)
 
     // Open conf file (a json file), and perform sanity check.
     JSON_Value *root_value = json_parse_file_with_comments(cf->fname);
+printf("====wgu==parse_pool_conf_file cf->fname:%s, %08x\n", cf->fname, (int)root_value);
+#if 1 
     ASSERT(root_value != NULL);
     if (JSONObject != json_type(root_value)) {
       log_error("config file error format : %s", cf->fname);
       return NC_ERROR;
     }
-
+#endif
     JSON_Object* pool_obj = json_value_get_object(root_value);
+printf("====wgu==parse_pool_conf_file cf->fname:%s, 2: %08x\n", cf->fname, (int)pool_obj);
+#if 1 
     if (!sanity_check_pool_conf_json(pool_obj)) {
       log_error("config file invalid content : %s", cf->fname);
-      json_value_free(root_value);
-      return NC_ERROR;
+//      json_value_free(root_value);
+//      return NC_ERROR;
     }
-
+#endif
     // Create a conf_pool object.
     struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
     if (pool == NULL) {
@@ -2615,7 +2669,8 @@ conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool)
 {
   rstatus_t status;
   struct string plname;
-
+  int objcount = json_object_get_count(pobj);
+printf("===wgu===========conf_json_to_conf_pool, objcount:%d\n", objcount);
   const char* name = json_object_get_string(pobj, "name");
   const char* id = json_object_get_string(pobj, "id");
 
@@ -2734,10 +2789,11 @@ sanity_check_pool_conf_json(JSON_Object *pobj)
   if (!pobj) return false;
 
   uint32_t pool_begin = 0, pool_end = 0;
-
+printf("====wgu==conf json 0 objcount:%d\n", json_object_get_count(pobj));
   if (json_object_get_string(pobj, "name") == NULL) {
     return false;
   }
+printf("====wgu==conf json 1\n");
   if (json_object_get_string(pobj, "id") == NULL) {
     return false;
   }
@@ -2881,6 +2937,7 @@ conf_shard_to_server_shard(struct conf_shard *conf_sd,
   srv_sd->owner = sp;
   srv_sd->range_begin = conf_sd->range_begin;
   srv_sd->range_end = conf_sd->range_end;
+printf("====wgu===conf_shard_to_server_shard\n");
 
   struct server *srv;
 
@@ -3020,7 +3077,7 @@ update_server_shards_from_conf_json(JSON_Object *pobj,
                                     struct server_pool *sp)
 {
   rstatus_t rv = NC_OK;
-
+printf("=====wgu== update_server_shards_from_conf_json==================\n");
   if (!sanity_check_pool_conf_json(pobj)) {
     log_error("invalid json conf object\n");
     return NC_ERROR;
@@ -3157,6 +3214,7 @@ set_server_shard_status(struct conf_shard *conf_sd, struct shard *srv_sd)
   log_warn("before: shard [%d : %d] status: can-read %d, can-write %d",
            srv_sd->range_begin, srv_sd->range_end,
            srv_sd->can_read, srv_sd->can_write);
+printf("===wgu==shard status: %s\n", conf_sd->status);
   if (strncmp(conf_sd->status, "init", 4) == 0) {
     srv_sd->can_read = 0;
     srv_sd->can_write = 0;
@@ -3167,9 +3225,10 @@ set_server_shard_status(struct conf_shard *conf_sd, struct shard *srv_sd)
     srv_sd->can_read = 1;
     srv_sd->can_write = 0;
   } else {
-    log_error("unknown shard status %s\n", conf_sd->status);
     srv_sd->can_read = 0;
     srv_sd->can_write = 0;
+    strncpy(conf_sd->status, "init", 4);
+    log_error("unknown shard status, reset to \"%s\".\n", conf_sd->status);
   }
   log_warn("after: shard [%d : %d] status: can-read %d, can-write %d",
            srv_sd->range_begin, srv_sd->range_end,
@@ -3267,7 +3326,8 @@ add_watcher_on_conf_pool(struct context *ctx)
   return rv;
 }
 
-bool hcdsetbuf(char *buf, unsigned len, struct server_pool *sp) {
+bool hcdsetbuf(char *buf, unsigned len, struct server_pool *sp, 
+               struct msg *msg, struct context *ctx) {
     ASSERT(buf != NULL);
     // convert the content to a json obj.
     JSON_Value *jroot = json_parse_string_with_comments(buf);
