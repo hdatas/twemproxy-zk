@@ -246,7 +246,7 @@ stats_server_unmap(struct array *stats_server)
     log_debug(LOG_VVVERB, "unmap %"PRIu32" stats servers", nserver);
 }
 
-static rstatus_t
+rstatus_t
 stats_pool_init(struct stats_pool *stp, struct server_pool *sp)
 {
     rstatus_t status;
@@ -725,7 +725,7 @@ static void
 stats_summarize_latency(struct stats *st)
 {
     struct context *ctx = st->context;
-    assert(array_n(&st->sum) == 1);
+//    assert(array_n(&st->sum) == 1);
     for (int i = 0; i < array_n(&st->sum); i++) {
         struct stats_pool *stp = array_get(&st->sum, i);
         //log_error("summarize latency for pool %s\n", stp->name.data);
@@ -737,6 +737,8 @@ stats_summarize_latency(struct stats *st)
         struct stats_metric *lat_p95 = array_get(&stp->metric, 14);
         struct stats_metric *lat_p99 = array_get(&stp->metric, 15);
 
+printf("-----------wgu-- pool:%s, pool id:%d, lat_min:%08x, value:%d)))))))))))))))\n", 
+    stp->name.data, i, lat_min, lat_min->value.counter);
         lat_min->value.counter = hdr_value_at_percentile(ctx->histogram, 0);
         lat_max->value.counter = hdr_max(ctx->histogram);
         lat_p50->value.counter = hdr_value_at_percentile(ctx->histogram, 50);

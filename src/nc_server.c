@@ -229,6 +229,8 @@ server_each_preconnect(void *elem, void *data)
     server = elem;
     pool = server->owner;
 
+printf("=====wgu==server_each_preconnect server:%08x, owner:%08x, pool->ctx:%08x\n", 
+       server, server->owner, pool->ctx);
     conn = server_conn(server);
     if (conn == NULL) {
         return NC_ENOMEM;
@@ -811,12 +813,12 @@ server_pool_conn(struct context *ctx, struct server_pool *pool, uint8_t *key,
     return conn;
 }
 
-static rstatus_t
+rstatus_t
 server_pool_each_preconnect(void *elem, void *data)
 {
     rstatus_t status;
     struct server_pool *sp = elem;
-
+printf("=====wgu==server_pool_each_preconnect sp:%08x, nsp:%08x\n", sp, array_n(&sp->server));
     if (!sp->preconnect) {
         return NC_OK;
     }
@@ -1197,10 +1199,12 @@ printf("----------------------server_pool_init\n");
     ASSERT(npool != 0);
     ASSERT(array_n(server_pool) == 0);
 
+    /* NOTE: we pre-allocated server pool array at core_ctx_create.
     status = array_init(server_pool, npool, sizeof(struct server_pool));
     if (status != NC_OK) {
         return status;
     }
+    */
 
     /* transform conf pool to server pool */
     status = array_each(conf_pool, conf_pool_each_transform, server_pool);

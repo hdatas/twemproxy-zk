@@ -233,5 +233,6 @@ void stats_swap(struct stats *stats);
 rstatus_t add_server_to_stats_pool(struct stats_pool *stp, struct server *srv);
 void stats_lock(struct stats *st);
 void stats_unlock(struct stats *st);
+rstatus_t stats_pool_init(struct stats_pool *stp, struct server_pool *sp);
 
 #endif

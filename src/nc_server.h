@@ -173,5 +173,5 @@ void add_server_to_stats(struct server *srv, struct server_pool *pool);
 void dump_server_pool(struct server_pool *sp);
 void dump_shard(struct shard *sd);
 void dump_server(struct server *srv);
-
+rstatus_t server_pool_each_preconnect(void *elem, void *data);
 #endif

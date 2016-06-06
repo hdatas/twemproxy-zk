@@ -59,7 +59,12 @@ core_ctx_create(struct instance *nci)
     ctx->cf = NULL;
     ctx->stats = NULL;
     ctx->evb = NULL;
-    array_null(&ctx->pool);
+    //array_null(&ctx->pool);
+    // TODO: pass cmd line option about max pool allowed.
+    status = array_init(&ctx->pool, 1000, sizeof(struct server_pool));
+    if (status != NC_OK) {
+        return status;
+    }
     ctx->max_timeout = nci->stats_interval;
     ctx->timeout = ctx->max_timeout;
     ctx->max_nfd = 0;
@@ -342,8 +347,12 @@ core_core(void *arg, uint32_t events)
         log_warn("conn is already unrefed!");
         return NC_OK;
     }
-
+    struct server_pool *mypool;
+    mypool = conn->owner;
+printf("=========wgu==core_core: conn:%08x, conn->owner->ctx:%08x, mypool:%08x\n", 
+        conn, mypool->ctx, mypool);
     ctx = conn_to_ctx(conn);
+printf("=========wgu==core_core: ctx:%08x after\n", ctx);
 
     log_debug(LOG_VVERB, "event %04"PRIX32" on %c %d", events,
               conn->client ? 'c' : (conn->proxy ? 'p' : 's'), conn->sd);

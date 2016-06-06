@@ -67,7 +67,7 @@ static bool conf_match_server(struct conf_server *conf_srv, struct server *srv);
 static void set_server_shard_status(struct conf_shard *conf_sd,
                                     struct shard *srv_sd);
 static bool is_valid_conf_server(struct conf_server *conf_srv);
-static rstatus_t update_server_shards_from_conf_json(JSON_Object *pobj,
+rstatus_t update_server_shards_from_conf_json(JSON_Object *pobj,
                                     struct array *srv_shards,
                                     struct server_pool *sp);
 
@@ -331,6 +331,10 @@ conf_pool_deinit(struct conf_pool *cp)
     log_debug(LOG_VVERB, "deinit conf pool %p", cp);
 }
 
+/*void printsp(struct array *server_pool poolarray) {
+  struct server_pool* sp = array_get(poolarray, 0);
+}*/
+
 rstatus_t
 conf_pool_each_transform(void *elem, void *data)
 {
@@ -338,13 +342,19 @@ conf_pool_each_transform(void *elem, void *data)
     struct conf_pool *cp = elem;
     struct array *server_pool = data;
     struct server_pool *sp;
-
-printf("====wgu=== conf_pool_each_transform cp_name:%s, sp:%08x, cp->valid:%d, cp:%08x\n", 
-       cp->name.data, server_pool, cp->valid, cp);
+   
+    struct server_pool* dbgsp = NULL;
+    if (array_n(server_pool) > 0) {
+      dbgsp = array_get(server_pool, 0);
+    }
+printf("====wgu=== conf_pool_each_transform before: cp_name:%s, sp:%08x, cp->valid:%d, "
+       "cp:%08x, sp->ctx=%p\n",
+       cp->name.data, server_pool, cp->valid, cp, dbgsp ? dbgsp->ctx : 0);
 //    ASSERT(cp->valid);
     sp = array_push(server_pool);
-printf("====wgu===2 conf_pool_each_transform sp:%08x, cp->valid:%d, cp:%08x, n_sp:%d\n", 
-       server_pool, cp->valid, cp, array_n(server_pool));
+printf("====wgu===2 conf_pool_each_transform after: sp:%08x, cp->valid:%d, cp:%08x, "
+       "n_sp:%d, sp->ctx=%p\n",
+       server_pool, cp->valid, cp, array_n(server_pool), dbgsp ? dbgsp->ctx : 0);
     ASSERT(sp != NULL);
 
     sp->idx = array_idx(server_pool, sp);
@@ -424,6 +434,9 @@ printf("====wgu===2 conf_pool_each_transform sp:%08x, cp->valid:%d, cp:%08x, n_s
     }
     dump_server_pool(sp);
 
+printf("====wgu===2 conf_pool_each_transform will return: sp:%08x, cp->valid:%d, cp:%08x, "
+       "n_sp:%d, sp->ctx=%p\n",
+       server_pool, cp->valid, cp, array_n(server_pool), dbgsp ? dbgsp->ctx : 0);
     return NC_OK;
 }
 
@@ -2078,18 +2091,18 @@ printf("===wgu==to conf_server_to_conf_listen.\n");
 
     // hash value range: [min, max]
     JSON_Array * hv_range = json_object_get_array(obj, "shard_range");
-if (hv_range>0) {
-//    ASSERT(hv_range != NULL);
-    ASSERT(json_array_get_count(hv_range) == 2);
-    pool->shard_range_min = atoi(json_array_get_string(hv_range, 0));
-    pool->shard_range_max = atoi(json_array_get_string(hv_range, 1));
+    if (hv_range != NULL) {
+        ASSERT(json_array_get_count(hv_range) == 2);
+        pool->shard_range_min = atoi(json_array_get_string(hv_range, 0));
+        pool->shard_range_max = atoi(json_array_get_string(hv_range, 1));
 printf("======wgu==shard min:%d, max:%d\n", pool->shard_range_min, pool->shard_range_max);
-    ASSERT(pool->shard_range_min < pool->shard_range_max);
-} else {
-    pool->shard_range_min = 0;
-    pool->shard_range_max = 1000000000;
-printf("====wgu===shard min:%d, max:%d\n", 0, 1000000000);
-}
+        ASSERT(pool->shard_range_min < pool->shard_range_max);
+    } else {
+        pool->shard_range_min = (uint32_t)atoi(json_object_get_string(obj, "pool_begin"));
+        pool->shard_range_max = (uint32_t)atoi(json_object_get_string(obj, "pool_end"));
+printf("===wgu===========----init-----conf_json_to_conf_pool, SHARD MIN:%08x, MAX:%08x\n", 
+      pool->shard_range_min, pool->shard_range_max);
+    }
     // Init shards.
     status = array_init(&pool->shards, CONF_DEFAULT_SHARDS,
                         sizeof(struct conf_shard));
@@ -2110,7 +2123,7 @@ printf("====wgu===shard min:%d, max:%d\n", 0, 1000000000);
         cfshard->range_begin = (uint32_t)(atoi)(json_object_get_string(js, "shard_begin"));
         cfshard->range_end = (uint32_t)(atoi)(json_object_get_string(js, "shard_end"));
 
-printf("shard start:%d, end:%d\n", cfshard->range_begin, cfshard->range_end);
+        printf("======wgu===shard start:%d, end:%d\n", cfshard->range_begin, cfshard->range_end);
         // Add master / slave conf_servers in each conf_shard.
         const char* jsmaster = json_object_get_string(js, "master_target");
         string_to_conf_server((const uint8_t*)jsmaster, &cfshard->master);
@@ -2688,10 +2701,11 @@ printf("===wgu===========conf_json_to_conf_pool, objcount:%d\n", objcount);
   pool->redis_db = 0;
   pool->hash = HASH_MURMUR;
 
-
   // Get this pool's hash value range.
   pool->shard_range_min = (uint32_t)atoi(json_object_get_string(pobj, "pool_begin"));
   pool->shard_range_max = (uint32_t)atoi(json_object_get_string(pobj, "pool_end"));
+printf("===wgu===========---------conf_json_to_conf_pool, SHARD MIN:%08x, MAX:%08x\n", 
+    pool->shard_range_min, pool->shard_range_max);
 
   // Max number of connections a proxy can establish to a server.
   const char *srv_conns = json_object_get_string(pobj, "server_connections");
@@ -3071,7 +3085,7 @@ conf_match_server(struct conf_server *conf_srv, struct server *srv)
 // "srv_shards":  array of currenet shards in the pool.
 // "sp" :         the owner server_pool.
 //
-static rstatus_t
+rstatus_t
 update_server_shards_from_conf_json(JSON_Object *pobj,
                                     struct array *srv_shards,
                                     struct server_pool *sp)

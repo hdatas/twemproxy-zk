@@ -184,5 +184,6 @@ rstatus_t conf_json_init_pool(JSON_Object* obj, struct conf_pool* pool,
 rstatus_t conf_json_post_validate(struct conf *cf);
 bool hcdsetbuf(char *buffer, unsigned len, struct server_pool *pool,
                struct msg *msg, struct context *ctx);
-
+rstatus_t update_server_shards_from_conf_json(JSON_Object *pobj,
+               struct array *srv_shards, struct server_pool *sp);
 #endif

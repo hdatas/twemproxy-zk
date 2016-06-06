@@ -7,6 +7,8 @@
 #include <string.h>
 #include <nc_core.h>
 #include <nc_conf.h>
+#include <nc_stats.h>
+#include <nc_server.h>
 #include <parson/parson.h>
 
 /*
@@ -50,150 +52,6 @@ setparser(char *buffer, char **key, char **value)
 
     return true;
 }
-#if 0
-static rstatus_t
-h_conf_json_init_pool(JSON_Object* obj,
-                    struct conf_pool* pool)
-{
-    rstatus_t status;
-    struct string plname;
-
-    // TODO: verify "proxies", "shard_range", "shards", "master", "slaves" exists.
-    //
-    // init pool name.
-    string_init(&plname);
-int numobj1 = json_object_get_count(obj);
-//    size_t numobj = json_array_get_count(obj);
-    const char* name = json_object_get_string(obj, "name");
-printf("===wgu==inside 4 name=%s, pool_obj:%08x, pool:%08x, num of obj:%08x\n", name, (int)obj, (int)pool, numobj1);
-    status = string_copy(&plname, name, (uint32_t)strlen(name));
-    if (status != NC_OK) {
-      return status;
-    }
-    // Init the pool to default value.
-    conf_pool_init(pool, &plname);
-    string_deinit(&plname);
-
-    // Init the list of proxies.
-    status = array_init(&pool->proxies, CONF_DEFAULT_PROXIES,
-                        sizeof(struct conf_server));
-
-    JSON_Array*  jproxies = json_object_get_array(obj, "proxy");
-    ASSERT(jproxies != NULL);
-    size_t nproxies = json_array_get_count(jproxies);
-printf("===wgu===proxy#:%d\n", nproxies);
-    ASSERT(nproxies > 0);
-    char *inst_proxy_ip;               // proxy listen address
-    uint16_t inst_proxy_port;          // proxy listen port
-
-    for (size_t i = 0; i < nproxies; i++) {
-        int str_len = 200;
-        char proxy_addr[str_len];
-        char proxy_str[str_len];
-        const char* p = json_array_get_string(jproxies, i);
-        if (*p != NULL) {
-            inst_proxy_ip   = strsep(&p, ":");
-            inst_proxy_port = atoi(strsep(&p, ":"));
-printf("===wgu===proxy: ip %s, port %d\n", inst_proxy_ip, inst_proxy_port);
-        }
-        if (inst_proxy_ip != NULL) {
-            snprintf(proxy_addr, (size_t)str_len, "%s:%d", inst_proxy_ip,
-                    inst_proxy_port);
-//printf("===wgu===proxy: cmd:%s, file:%s\n", proxy_addr, p);
-       //     if ((strlen(proxy_addr) != strlen(p)) ||
-       //           (strncmp(proxy_addr, p, strlen(proxy_addr)) != 0)) {
-       //         continue;
-       //     } 
-        } else {
-            log_debug(LOG_NOTICE, "missing proxy ip:port\n");
-            array_deinit(&pool->proxies);
-            string_deinit(&pool->name);
-            return NC_ERROR;
-        }
-//printf("====wgu==pool->proxies: %s\n", &pool->proxies);
-        struct conf_server* cp = (struct conf_server*) array_push(&pool->proxies);
-        if (inst->unix_path == NULL){
-            snprintf(proxy_str, (size_t)str_len, "%s", proxy_addr);
-        } else {
-            snprintf(proxy_str, (size_t)str_len, "%s/%s_%d_%s", inst->unix_path,
-                    inst_proxy_ip, inst_proxy_port, name);
-        }
-printf("===wgu== proxy_str:%s, cp:%08x\n", proxy_str, cp);
-        string_to_conf_server((const uint8_t*) proxy_str, cp);
-        break;
-    }
-
-    // Skip a pool if it isn't covered by the specified "porxy_addr".
-    if (array_n(&pool->proxies) == 0) {
-        log_debug(LOG_NOTICE, "skip pool \"%s\"", name);
-        //conf_server_deinit(array_pop(&pool->proxies));
-        array_deinit(&pool->proxies);
-        string_deinit(&pool->name);
-        return NC_ERROR;
-    } else {
-        // init the "listen" address, which is proxy.
-        conf_server_to_conf_listen(array_get(&pool->proxies, 0),
-                                   &pool->listen);
-    }
-
-    // hash value range: [min, max]
-    JSON_Array * hv_range = json_object_get_array(obj, "shard_range");
-if (hv_range>0) {
-//    ASSERT(hv_range != NULL);
-    ASSERT(json_array_get_count(hv_range) == 2);
-    pool->shard_range_min = atoi(json_array_get_string(hv_range, 0));
-    pool->shard_range_max = atoi(json_array_get_string(hv_range, 1));
-printf("shard min:%d, max:%d\n", pool->shard_range_min, pool->shard_range_max);
-    ASSERT(pool->shard_range_min < pool->shard_range_max);
-} else {
-    pool->shard_range_min = 0;
-    pool->shard_range_max = 1000000;
-}
-    // Init shards.
-    status = array_init(&pool->shards, CONF_DEFAULT_SHARDS,
-                        sizeof(struct conf_shard));
-    JSON_Array* jshards = json_object_get_array(obj, "shards");
-    size_t nshards = json_array_get_count(jshards);
-    //ASSERT(nshards > 0);
-
-    for (size_t i = 0; i < nshards; i++) {
-        // Add a shard into pool.
-        struct conf_shard* cfshard = (struct conf_shard*) array_push(&pool->shards);
-        if (cfshard == NULL) {
-            status = NC_ENOMEM;
-            break;
-        }
-        memset(cfshard, 0, sizeof(struct conf_shard));
-
-        JSON_Object* js = json_array_get_object(jshards, i);
-        cfshard->range_begin = (uint32_t)(atoi)(json_object_get_string(js, "shard_begin"));
-        cfshard->range_end = (uint32_t)(atoi)(json_object_get_string(js, "shard_end"));
-
-printf("shard start:%d, end:%d\n", cfshard->range_begin, cfshard->range_end);
-        // Add master / slave conf_servers in each conf_shard.
-        const char* jsmaster = json_object_get_string(js, "master_target");
-        string_to_conf_server((const uint8_t*)jsmaster, &cfshard->master);
-
-        JSON_Array* jsslaves = json_object_get_array(js, "slave_target");
-        size_t nslaves = json_array_get_count(jsslaves);
-        if (nslaves>0) {
-          status = array_init(&cfshard->slaves, CONF_DEFAULT_SLAVES,
-                              sizeof(struct conf_server));
-
-          for (size_t s = 0; s < nslaves; s++) {
-            const char* slvstr = json_array_get_string(jsslaves, s);
-            struct conf_server* slv = array_push(&cfshard->slaves);
-            string_to_conf_server((const uint8_t*)slvstr, slv);
-            //struct string* slv = (struct string*) array_push(&cfshard->slaves);
-            //string_init(slv);
-            //string_copy(slv, (uint8_t*)slvstr, (uint32_t)strlen(slvstr));
-          }
-        }
-    }
-
-    return NC_OK;
-}
-#endif
 
 static rstatus_t
 h_conf_json_parse(struct conf *cf, 
@@ -205,10 +63,10 @@ h_conf_json_parse(struct conf *cf,
     JSON_Value *root_value = jvalue;
     ASSERT(root_value != NULL);
 
-    JSON_Array* pools = &ctx->pool;
-    size_t num_pools = json_array_get_count(pools);
+//    Array* pools = &ctx->pool;
+//    size_t num_pools = json_array_get_count(pools);
 
-printf("====wgu===h_conf_json_parse, pool: %s, pools: %08x, total pools: %d\n", cf->pool, (int)pools, num_pools);
+//printf("====wgu===h_conf_json_parse, pool: %s, pools: %08x, total pools: %d\n", cf->pool, (int)pools, num_pools);
 printf("=***===wgu===h_parse pool, before pool #: %d\n", array_n(&cf->pool));
     struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
     if (pool == NULL) {
@@ -220,17 +78,17 @@ printf("=***===wgu===h_parse pool, after pool #: %d\n", array_n(&cf->pool));
     JSON_Object* pool_obj = jobject;
     int nobj2 = json_object_get_count(pool_obj);
 // pick the first element from json array
-printf("====wgu 2===before conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x, num-obj:%d\n", (int)pool_obj, pool, pools, nobj2);
+//printf("====wgu 2===before conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x, num-obj:%d\n", (int)pool_obj, pool, pools, nobj2);
     status = conf_json_init_pool(pool_obj, pool, ctx->owner_inst);
     if (status != NC_OK) {
-printf("====wgu 2===conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x\n", (int)pool_obj, pool, pools);
+//printf("====wgu 2===conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x\n", (int)pool_obj, pool, pools);
             array_pop(&cf->pool);
             return status;
     }
     pool->valid = 1;
-printf("====wgu 33===conf_json_parse, pool_obj=%08x, pools: %08x\n", (int)pool_obj, pools);
+//printf("====wgu 33===conf_json_parse, pool_obj=%08x, pools: %08x\n", (int)pool_obj, pools);
     
-    json_value_free(root_value);
+//    json_value_free(root_value);
 
     return status;
 }
@@ -275,12 +133,108 @@ error:
     return NULL;
 }
 
-bool
-h_ctx_create(struct conf_pool *conf_pool, struct array *server_pool)
+void 
+printctx(struct msg *msg) {
+  struct conn *c_conn;
+  struct msg *response = msg->peer;
+  struct server_pool *pool;
+  c_conn = response->owner;
+  pool = c_conn->owner;
+
+  printf("!!!!!!!!!!!wgu!! pool->ctx: %08x\n", pool->ctx);
+}
+
+static rstatus_t
+h_stats_pool_map(struct array *stats_pool, struct array *server_pool)
 {
-printf("====wgu===ctx-create before transform. cp name:%s\n", conf_pool->name.data);
+    rstatus_t status;
+    uint32_t i, npool;
+
+    npool = array_n(server_pool);
+    ASSERT(npool != 0);
+
+    struct server_pool *sp = array_get(server_pool, npool-1);
+    struct stats_pool *stp = array_push(stats_pool);
+
+    status = stats_pool_init(stp, sp);
+    if (status != NC_OK) {
+        return status;
+    }
+
+    log_debug(LOG_VVVERB, "map %"PRIu32" stats pools", npool);
+
+    return NC_OK;
+}
+
+h_stats_create(struct stats *st, struct array *server_pool)
+{
+    rstatus_t status=NC_OK;
+
+    status = h_stats_pool_map(&st->current, server_pool);
+    if (status != NC_OK) {
+        goto error;
+    }
+
+    status = h_stats_pool_map(&st->shadow, server_pool);
+    if (status != NC_OK) {
+        goto error;
+    }
+
+    status = h_stats_pool_map(&st->sum, server_pool);
+    if (status != NC_OK) {
+        goto error;
+    }
+printf("==========================================wgu===stat:%08x\n", st->lock);
+//    status = stats_create_buf(st);
+//    if (status != NC_OK) {
+//        goto error;
+//    }
+
+//    status = stats_start_aggregator(st);
+//    if (status != NC_OK) {
+//        goto error;
+//    }
+
+    return st;
+
+error:
+//    stats_destroy(st);
+    return NULL;
+
+}
+
+
+bool
+h_ctx_create(struct context *ctx, struct conf_pool *conf_pool, 
+             struct array *server_pool, JSON_Object* pool_obj, struct msg* msg)
+{
+    
+//    printf("=====wgu==h_ctx_create: array_n(&ctx->pool):%d, sp->lock:%08x\n", 
+//           array_n(&ctx->pool), sp->lock);
+//    pthread_mutex_init(&sp->lock, NULL);
+//    pthread_mutex_lock(&sp->lock);
+printf("!!!=====wgu000===ctx:%08x\n", ctx);    
+printctx(msg); 
     conf_pool_each_transform(conf_pool, server_pool);
-printf("====wgu===ctx-create\n");
+printf("!!!=====wgu00===ctx:%08x\n", ctx);    
+printctx(msg); 
+    h_stats_create(ctx->stats, server_pool);
+
+printf("!!!=====wgu0===ctx:%08x\n", ctx);    
+printctx(msg); 
+    struct server_pool *sp;
+    sp = array_get(&ctx->pool,array_n(&ctx->pool)-1);
+    sp->ctx = ctx;
+printf("!!!=====wgu1===ctx:%08x\n", ctx);    
+    // Apply the updated pool conf to server_pool.
+printctx(msg); 
+    pthread_mutex_lock(&sp->lock);
+    update_server_shards_from_conf_json(pool_obj, &sp->shards, sp);
+    pthread_mutex_unlock(&sp->lock);
+ 
+//    server_pool_each_preconnect(array_get(&ctx->pool,array_n(&ctx->pool)-1), NULL);
+    proxy_each_init(array_get(&ctx->pool,array_n(&ctx->pool)-1), NULL);
+//    pthread_mutex_unlock(&sp->lock);
 
 }
 
@@ -292,10 +246,10 @@ h_create_pool(char *buffer, unsigned len,
     rstatus_t status = NC_OK;
     nc_write_file("h_tempfile", buffer, strlen(buffer)); 
 
-JSON_Array* pools = &ctx->pool;
-size_t num_pools = json_array_get_count(pools);
+//JSON_Array* pools = &ctx->pool;
+//size_t num_pools = json_array_get_count(pools);
 
-printf("====wgu===h_create_pool, before pool #: %d, NC_OK=%d\n", array_n(pools), NC_OK);
+//printf("====wgu===h_create_pool, before pool #: %d, NC_OK=%d\n", array_n(pools), NC_OK);
     struct conf *cf;
     cf = h_conf_json_create("h_tempfile", msg, ctx, jvalue, jobject);
     remove("h_tempfile");
@@ -303,10 +257,9 @@ printf("====wgu===h_create_pool, before pool #: %d, NC_OK=%d\n", array_n(pools),
       return NULL;
     }
 
-printf("====wgu===h_create_pool, after pool #: %d, cp->valid:%d, cp:%08x, &ctx->pool:%08x\n", 
-       array_n(pools), cf->valid, cf, &ctx->pool);
+printctx(msg); 
     struct conf_pool *cf_pool = array_get(&cf->pool, 0);
-    h_ctx_create(cf_pool, &ctx->pool);
+    h_ctx_create(ctx, cf_pool, &ctx->pool, jobject, msg);
 printf("====wgu===HCD Done===========================\n"); 
 
     return true;
@@ -323,10 +276,15 @@ hcdset(char *buffer, unsigned len, struct msg *msg, struct context *ctx)
 
     c_conn = response->owner;
     pool = c_conn->owner;
+    log_debug(LOG_NOTICE, "c_conn proxy = %d, client = %d\n", c_conn->proxy, c_conn->client);
+
+//    msg->owner = c_conn;
+printf("!!!=====wgu===msg:%08x, owner:%08x == c_conn:%08x, pool->ctx:%08x, ctx:%08x, pname:%s\n", 
+       msg, msg->owner, c_conn, pool->ctx, ctx, pool->name.data);    
 
     ASSERT(array_n(pools)>0);
 //    ASSERT(true==setparser(buffer, &keybuf, &valuebuf));
-    if (false==setparser(buffer, &keybuf, &valuebuf)) {
+    if (false == setparser(buffer, &keybuf, &valuebuf)) {
         return false;
     }
     log_debug(LOG_NOTICE, "Key   = %s\nValue = %s\n", keybuf, valuebuf);
@@ -350,6 +308,7 @@ printf("=========wgu===pool array_n: %d\n", array_n(pools));
             break;
         } 
     }
+
     if (same_pool) {
         return hcdsetbuf(valuebuf, len, pool, msg, ctx);
     } else {

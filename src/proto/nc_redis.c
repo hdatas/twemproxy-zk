@@ -2728,10 +2728,18 @@ printf("========wgu===reply context %08x\n", ctx);
         return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
     case MSG_REQ_REDIS_HCDSETPROXY:
         buflen = (STAILQ_FIRST(&r->mhdr))->last-(STAILQ_FIRST(&r->mhdr))->pos;
-        if (hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, r, ctx))
-            return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
-        else
-            return msg_append(response, rsp_hcdproxy_err.data, rsp_hcdproxy_err.len);
+        //if (hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, r, ctx))
+        struct server_pool* spp = c_conn->owner;
+printf("========wgu==befor=reply context %08x, c_conn:%08x, pool:%08x, spp->ctx:%08x\n", 
+       ctx, c_conn, c_conn->owner, spp->ctx);
+        bool ret = hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, r, ctx);
+printf("========wgu==after=reply context %08x, c_conn:%08x, pool:%08x, spp->ctx:%08x\n", 
+       ctx, c_conn, c_conn->owner, spp->ctx);
+        if (ret) {
+          return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
+        } else {
+          return msg_append(response, rsp_hcdproxy_err.data, rsp_hcdproxy_err.len);
+        }
 
     default:
         NOT_REACHED();

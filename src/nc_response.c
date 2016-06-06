@@ -355,7 +355,7 @@ void
 rsp_send_done(struct context *ctx, struct conn *conn, struct msg *msg)
 {
     struct msg *pmsg; /* peer message (request) */
-
+printf("-------wgu---res_send_done. ctx:%08x, conn:%08x\n", ctx, conn);
     ASSERT(conn->client && !conn->proxy);
     ASSERT(conn->smsg == NULL);
 
