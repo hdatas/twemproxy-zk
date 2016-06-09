@@ -50,6 +50,8 @@
 // By default proxy listens on this port.
 #define NC_PROXY_PORT  22100
 
+#define NC_POOL_MAX    1000
+
 static int show_help;
 static int test_conf;
 static int daemonize;
@@ -64,6 +66,7 @@ static struct option long_options[] = {
     { "verbose",        required_argument,  NULL,   'v' },
     { "pid-file",       required_argument,  NULL,   'p' },
     { "pool",           required_argument,  NULL,   'l' },
+    { "pool-max",       required_argument,  NULL,   'q' },
     { "describe-stats", no_argument,        NULL,   'D' },
     { "conf-file",      required_argument,  NULL,   'c' },
     { "proxy-addr",     required_argument,  NULL,   'x' },
@@ -79,7 +82,7 @@ static struct option long_options[] = {
     { NULL,             0,                  NULL,    0  }
 };
 
-static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:u:z:g:l:";
+static char short_options[] = "hVtdDv:o:c:s:i:a:p:m:x:y:u:z:g:l:q:";
 
 static rstatus_t
 nc_daemonize(int dump_core)
@@ -235,11 +238,12 @@ nc_show_usage(void)
         "  -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: %d bytes)" CRLF
         "  -x, --proxy-addr       : set proxy listen address (MUST provide)" CRLF
         "  -y, --proxy-port       : set proxy listen port (MUST provide)" CRLF
-        "  -u, --unix-path        : set unix domain socket path (should provide"
+        "  -u, --unix-path        : set unix domain socket path (should provide "
                                     "if proxy needs to bind to doamin socket)" CRLF
         "  -z, --zookeeper        : set zookeeper server hosts (MUST provide)" CRLF
         "  -g, --zkconfig         : set zk pool config file path (default: %s)" CRLF
         "  -l, --pool=S           : pool name (MUST provide)" CRLF
+        "  -q, --pool-max         : max # of pools (default: 1000)" CRLF
         "",
         NC_LOG_DEFAULT, NC_LOG_MIN, NC_LOG_MAX,
         NC_LOG_PATH != NULL ? NC_LOG_PATH : "stderr",
@@ -337,14 +341,13 @@ nc_set_default_options(struct instance *nci)
     }
     nci->hostname[NC_MAXHOSTNAMELEN - 1] = '\0';
 
-printf("===set default name:%s\n", nci->hostname);
     nci->mbuf_chunk_size = NC_MBUF_SIZE;
     nci->conf_filename = NC_CONF_PATH;
     nci->pid = (pid_t)-1;
     nci->pid_filename = NULL;
     nci->pidfile = 0;
     nci->pool_name = NULL;
-
+    nci->pool_max  = NC_POOL_MAX; // pre-allocated, maxium pool #
     nci->proxy_port = NC_PROXY_PORT;
     nci->unix_path = NULL;
     nci->proxy_ip = NULL;         // user must pass proxy addr.
@@ -396,6 +399,14 @@ nc_get_options(int argc, char **argv, struct instance *nci)
         case 'l':
             nci->pool_name = optarg;
             break;
+        case 'q':
+            value = nc_atoi(optarg, strlen(optarg));
+            if (value <= 0) {
+                log_stderr("nutcracker: option -q requires a positive number");
+                return NC_ERROR;
+            }
+            nci->pool_max = value;
+            break;
         case 'p':
             nci->pid_filename = optarg;
             break;
@@ -416,7 +427,7 @@ nc_get_options(int argc, char **argv, struct instance *nci)
             log_stderr("nutcracker: proxy listen adddr: %s", nci->unix_path);
             break;
 
-	case 'D':
+	      case 'D':
             describe_stats = 1;
             show_version = 1;
             break;

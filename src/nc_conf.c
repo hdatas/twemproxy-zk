@@ -347,14 +347,13 @@ conf_pool_each_transform(void *elem, void *data)
     if (array_n(server_pool) > 0) {
       dbgsp = array_get(server_pool, 0);
     }
-printf("====wgu=== conf_pool_each_transform before: cp_name:%s, sp:%08x, cp->valid:%d, "
-       "cp:%08x, sp->ctx=%p\n",
-       cp->name.data, server_pool, cp->valid, cp, dbgsp ? dbgsp->ctx : 0);
-//    ASSERT(cp->valid);
+    ASSERT(cp->valid);
     sp = array_push(server_pool);
+printf("====wgu===aft push server_pool. nelem:%d, size:%d, nalloc:%d, elem:%08x\n", server_pool->nelem, server_pool->size, server_pool->nalloc, server_pool->elem);
+
 printf("====wgu===2 conf_pool_each_transform after: sp:%08x, cp->valid:%d, cp:%08x, "
-       "n_sp:%d, sp->ctx=%p\n",
-       server_pool, cp->valid, cp, array_n(server_pool), dbgsp ? dbgsp->ctx : 0);
+       "n_sp:%d, sp:%08x, sp->ctx=%08x\n",
+       server_pool, cp->valid, cp, array_n(server_pool), sp, sp->ctx);
     ASSERT(sp != NULL);
 
     sp->idx = array_idx(server_pool, sp);
@@ -2683,7 +2682,7 @@ conf_json_to_conf_pool(JSON_Object *pobj, struct conf_pool *pool)
   rstatus_t status;
   struct string plname;
   int objcount = json_object_get_count(pobj);
-printf("===wgu===========conf_json_to_conf_pool, objcount:%d\n", objcount);
+printf("===wgu===========conf_json_to_conf_pool, objcount:%d, pool:%08x\n", objcount, pool);
   const char* name = json_object_get_string(pobj, "name");
   const char* id = json_object_get_string(pobj, "id");
 
@@ -3091,7 +3090,7 @@ update_server_shards_from_conf_json(JSON_Object *pobj,
                                     struct server_pool *sp)
 {
   rstatus_t rv = NC_OK;
-printf("=====wgu== update_server_shards_from_conf_json==================\n");
+printf("=====wgu== update_server_shards_from_conf_json===============&rv:%08x===\n", &rv);
   if (!sanity_check_pool_conf_json(pobj)) {
     log_error("invalid json conf object\n");
     return NC_ERROR;

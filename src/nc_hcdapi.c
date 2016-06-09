@@ -166,6 +166,17 @@ h_stats_pool_map(struct array *stats_pool, struct array *server_pool)
     return NC_OK;
 }
 
+h_hdr_init(struct server_pool* sp)
+{
+    // Init hdr-histogram
+    int64_t lowest = 1;
+    int64_t highest = 1000000000;
+    int sig_digits = 3;
+
+    hdr_init(lowest, highest, sig_digits, &sp->histogram);
+    pthread_mutex_init(&sp->histo_lock, NULL);
+}
+
 h_stats_create(struct stats *st, struct array *server_pool)
 {
     rstatus_t status=NC_OK;
@@ -216,24 +227,21 @@ h_ctx_create(struct context *ctx, struct conf_pool *conf_pool,
 printf("!!!=====wgu000===ctx:%08x\n", ctx);    
 printctx(msg); 
     conf_pool_each_transform(conf_pool, server_pool);
-printf("!!!=====wgu00===ctx:%08x\n", ctx);    
-printctx(msg); 
-    h_stats_create(ctx->stats, server_pool);
 
 printf("!!!=====wgu0===ctx:%08x\n", ctx);    
 printctx(msg); 
     struct server_pool *sp;
-    sp = array_get(&ctx->pool,array_n(&ctx->pool)-1);
+    sp = array_get(&ctx->pool, array_n(&ctx->pool)-1);
     sp->ctx = ctx;
-printf("!!!=====wgu1===ctx:%08x\n", ctx);    
+    h_hdr_init(sp);
+    h_stats_create(ctx->stats, server_pool);
     // Apply the updated pool conf to server_pool.
-printctx(msg); 
     pthread_mutex_lock(&sp->lock);
     update_server_shards_from_conf_json(pool_obj, &sp->shards, sp);
     pthread_mutex_unlock(&sp->lock);
  
 //    server_pool_each_preconnect(array_get(&ctx->pool,array_n(&ctx->pool)-1), NULL);
-    proxy_each_init(array_get(&ctx->pool,array_n(&ctx->pool)-1), NULL);
+    proxy_each_init(array_get(&ctx->pool, array_n(&ctx->pool)-1), NULL);
 //    pthread_mutex_unlock(&sp->lock);
 
 }

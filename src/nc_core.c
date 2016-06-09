@@ -61,7 +61,7 @@ core_ctx_create(struct instance *nci)
     ctx->evb = NULL;
     //array_null(&ctx->pool);
     // TODO: pass cmd line option about max pool allowed.
-    status = array_init(&ctx->pool, 1000, sizeof(struct server_pool));
+    status = array_init(&ctx->pool, nci->pool_max, sizeof(struct server_pool));
     if (status != NC_OK) {
         return status;
     }
@@ -94,13 +94,6 @@ core_ctx_create(struct instance *nci)
     }
     ctx->cf = ctx->json_cf;
 
-    // Init hdr-histogram
-    int64_t lowest = 1;
-    int64_t highest = 1000000000;
-    int sig_digits = 3;
-    hdr_init(lowest, highest, sig_digits, &ctx->histogram);
-    pthread_mutex_init(&ctx->histo_lock, NULL);
-
     /* initialize server pool from configuration */
     status = server_pool_init(&ctx->pool, &ctx->json_cf->pool, ctx);
     if (status != NC_OK) {
@@ -119,6 +112,19 @@ core_ctx_create(struct instance *nci)
         conf_destroy(ctx->cf);
         nc_free(ctx);
         return NULL;
+    }
+
+    // Init hdr-histogram
+    int64_t lowest = 1;
+    int64_t highest = 1000000000;
+    int sig_digits = 3;
+
+    uint32_t i, npool;
+    npool = array_n(&ctx->pool);
+    for (i=0; i < npool; i++) {
+        struct server_pool* svp = array_get(&ctx->pool, i);
+        hdr_init(lowest, highest, sig_digits, &svp->histogram);
+        pthread_mutex_init(&svp->histo_lock, NULL);
     }
 
     /* create stats per server pool */

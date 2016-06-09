@@ -140,8 +140,8 @@ struct context {
 
     zhandle_t       *zkh;           // zookeeper handle
 
-    pthread_mutex_t       histo_lock;
-    struct hdr_histogram *histogram;// HDR histogram to track percentile latency.
+//    pthread_mutex_t       histo_lock;
+//    struct hdr_histogram *histogram;// HDR histogram to track percentile latency.
 
     struct instance   *owner_inst;  // owner instance of this context.
 };
@@ -170,6 +170,7 @@ struct instance {
                                                     socket */
 
     char            *pool_name;                  // this instance maps to this backend pool.
+    uint16_t        pool_max;                    // pre-allocated, max # pools
 };
 
 struct context *core_start(struct instance *nci);

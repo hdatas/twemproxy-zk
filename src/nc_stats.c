@@ -739,19 +739,20 @@ stats_summarize_latency(struct stats *st)
 
 printf("-----------wgu-- pool:%s, pool id:%d, lat_min:%08x, value:%d)))))))))))))))\n", 
     stp->name.data, i, lat_min, lat_min->value.counter);
-        lat_min->value.counter = hdr_value_at_percentile(ctx->histogram, 0);
-        lat_max->value.counter = hdr_max(ctx->histogram);
-        lat_p50->value.counter = hdr_value_at_percentile(ctx->histogram, 50);
-        lat_p90->value.counter = hdr_value_at_percentile(ctx->histogram, 90);
-        lat_p95->value.counter = hdr_value_at_percentile(ctx->histogram, 95);
-        lat_p99->value.counter = hdr_value_at_percentile(ctx->histogram, 99);
-    }
+        struct server_pool *sp = array_get(&ctx->pool, i);
+        lat_min->value.counter = hdr_value_at_percentile(sp->histogram, 0);
+        lat_max->value.counter = hdr_max(sp->histogram);
+        lat_p50->value.counter = hdr_value_at_percentile(sp->histogram, 50);
+        lat_p90->value.counter = hdr_value_at_percentile(sp->histogram, 90);
+        lat_p95->value.counter = hdr_value_at_percentile(sp->histogram, 95);
+        lat_p99->value.counter = hdr_value_at_percentile(sp->histogram, 99);
 
-    // After recording the metrics, clear histogram record, and start tracking
-    // for the next reporting results.
-    pthread_mutex_lock(&ctx->histo_lock);
-    hdr_reset(ctx->histogram);
-    pthread_mutex_unlock(&ctx->histo_lock);
+        // After recording the metrics, clear histogram record, and start tracking
+        // for the next reporting results.
+        pthread_mutex_lock(&sp->histo_lock);
+        hdr_reset(sp->histogram);
+        pthread_mutex_unlock(&sp->histo_lock);
+    }
 }
 
 // Lock/Unlock to sync operations that read/write stats internals,

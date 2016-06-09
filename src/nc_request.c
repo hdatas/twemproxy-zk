@@ -113,15 +113,15 @@ req_put(struct msg *msg)
       struct conn *c_conn = (struct conn*)msg->owner;
       if (c_conn){
 	      struct server_pool *sp = (struct server_pool*)c_conn->owner;
-printf("----------wgu--msg:%08x,c_conn:%08x, sp:%08x,sp->ctx:%08x, pname:%08x\n",
-       msg, c_conn, sp, sp->ctx, sp->name.data);
+printf("----------wgu--msg:%08x,c_conn:%08x, sp:%08x,sp->ctx:%08x, pname:%08x, h:%08x\n",
+       msg, c_conn, sp, sp->ctx, sp->name.data, sp->histogram);
 	      if (sp) {		
 		      struct context *ctx = sp->ctx;
 		      if (ctx){
 			      int64_t lat_us = nc_usec_now() - msg->start_ts;
-			      pthread_mutex_lock(&ctx->histo_lock);
-			      hdr_record_value(ctx->histogram, lat_us);
-			      pthread_mutex_unlock(&ctx->histo_lock);
+			      pthread_mutex_lock(&sp->histo_lock);
+			      hdr_record_value(sp->histogram, lat_us);
+			      pthread_mutex_unlock(&sp->histo_lock);
 		      }
 	      }
       }

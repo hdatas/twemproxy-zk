@@ -146,6 +146,9 @@ struct server_pool {
     uint32_t           shard_range_max;
     struct array       shards;               // shard[] in this pool
 
+    struct hdr_histogram *histogram;         // histogram for this pool 
+    pthread_mutex_t    histo_lock;           // lock to sync this histogram
+
     pthread_mutex_t    lock;
 };
 
