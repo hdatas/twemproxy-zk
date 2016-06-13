@@ -71,10 +71,21 @@ A quick checklist:
       -i, --stats-interval=N : set stats aggregation interval in msec (default: 30000 msec)
       -p, --pid-file=S       : set pid file (default: off)
       -m, --mbuf-size=N      : set size of mbuf chunk in bytes (default: 16384 bytes)
+      -x, --proxy-addr       : set proxy listen address (MUST provide)
+      -y, --proxy-port       : set proxy listen port (MUST provide)
+      -u, --unix-path        : set unix domain socket path (should provide if proxy needs to bind to doamin socket)
+      -z, --zookeeper        : set zookeeper server hosts (MUST provide)
+      -g, --zkconfig         : set zk pool config file path (default: /distkv/proxy)
+      -l, --pool=S           : pool name (MUST provide)
+      -q, --pool-max         : max # of pools (default: 1000)
 
 ## Dynamic configuration changes through remote jedis client
 
      New redis command: hcdsetproxy pool_name "conf.json in strings"
+
+## Dynamic Pool Add/Update with Dynamic Histogram Support
+
+     twemproxy starts with a default dummy configuration file at conf/default.json and receives remote HCD dedicated Java redis client update (redis command: "hcdsetproxy poolname JSON-string"). If a new pool configuration is received, twemproxy will add this new pool to its internal pools, otherwise (if the same pool) update the existing pool.
 
 ## Zero Copy
 
