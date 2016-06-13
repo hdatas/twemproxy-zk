@@ -83,11 +83,33 @@ A quick checklist:
 
      New redis command: hcdsetproxy pool_name "conf.json in strings"
 
-## Dynamic Pool Add/Update with Dynamic Histogram Support
+## Dynamic Pool Add/Update with Multi-pool Histogram Support
 
 twemproxy starts with a default dummy configuration file at conf/default.json and receives remote HCD dedicated Java redis client update (redis command: "hcdsetproxy poolname JSON-string"). If a new pool configuration is received, twemproxy will add this new pool to its internal pools, otherwise (if the same pool) update the existing pool.
 
-command line: nutcracker
+Command line: nutcracker
+Statistic Histogram at default port: telnet 0.0.0.0 22225
+
+Default configuration file:
+conf/default.json
+     {
+       "pools": [
+         {   
+           "hash": "fnv1a_64",
+           "name": "pool0",
+           "pool_begin": "0",
+           "pool_end": "10000000",
+           "redis": true,
+           "server_retry_timeout": 2000,
+           "proxy": [
+             "127.0.0.1:22121"
+           ],  
+           "shards": [], 
+           "server_failure_limit": 1,
+           "id": "pid"
+         }   
+       ]
+     }
 
 ## Zero Copy
 
