@@ -85,7 +85,9 @@ A quick checklist:
 
 ## Dynamic Pool Add/Update with Dynamic Histogram Support
 
-     twemproxy starts with a default dummy configuration file at conf/default.json and receives remote HCD dedicated Java redis client update (redis command: "hcdsetproxy poolname JSON-string"). If a new pool configuration is received, twemproxy will add this new pool to its internal pools, otherwise (if the same pool) update the existing pool.
+twemproxy starts with a default dummy configuration file at conf/default.json and receives remote HCD dedicated Java redis client update (redis command: "hcdsetproxy poolname JSON-string"). If a new pool configuration is received, twemproxy will add this new pool to its internal pools, otherwise (if the same pool) update the existing pool.
+
+command line: nutcracker
 
 ## Zero Copy
 
