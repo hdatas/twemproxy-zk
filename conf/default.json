@@ -1,0 +1,18 @@
+{
+ "pools":
+ [ 
+  {
+  "hash": "fnv1a_64",
+  "name": "pool0",
+  "pool_begin": "0",
+  "pool_end": "10000000",
+  "redis": true,
+  "server_retry_timeout": 2000,
+  "proxy":["172.16.1.164:22121"],
+  "shards": [
+  ],
+  "server_failure_limit": 1,
+  "id": "pid"
+  }
+ ]
+}

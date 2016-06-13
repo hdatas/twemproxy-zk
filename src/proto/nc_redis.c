@@ -2704,14 +2704,13 @@ redis_fragment(struct msg *r, uint32_t ncontinuum, struct msg_tqh *frag_msgq)
 }
 
 rstatus_t
-redis_reply(struct msg *r, struct context *ctx)
+redis_reply(struct msg *r)
 {
     struct conn *c_conn;
     struct msg *response = r->peer;
     unsigned buflen=0;
 
     ASSERT(response != NULL && response->owner != NULL);
-printf("========wgu===reply context %08x\n", ctx);
     c_conn = response->owner;
     if (r->type == MSG_REQ_REDIS_AUTH) {
         return redis_handle_auth_req(r, response);
@@ -2728,13 +2727,8 @@ printf("========wgu===reply context %08x\n", ctx);
         return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
     case MSG_REQ_REDIS_HCDSETPROXY:
         buflen = (STAILQ_FIRST(&r->mhdr))->last-(STAILQ_FIRST(&r->mhdr))->pos;
-        //if (hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, r, ctx))
         struct server_pool* spp = c_conn->owner;
-printf("========wgu==befor=reply context %08x, c_conn:%08x, pool:%08x, spp->ctx:%08x\n", 
-       ctx, c_conn, c_conn->owner, spp->ctx);
-        bool ret = hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, r, ctx);
-printf("========wgu==after=reply context %08x, c_conn:%08x, pool:%08x, spp->ctx:%08x\n", 
-       ctx, c_conn, c_conn->owner, spp->ctx);
+        bool ret = hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, r);
         if (ret) {
           return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
         } else {

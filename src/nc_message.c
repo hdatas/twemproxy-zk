@@ -869,7 +869,6 @@ msg_send(struct context *ctx, struct conn *conn)
 {
     rstatus_t status;
     struct msg *msg;
-printf("------wgu-- msg_send. ctx:%08x\n", ctx);
     ASSERT(conn->send_active);
 
     conn->send_ready = 1;

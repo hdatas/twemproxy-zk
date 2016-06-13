@@ -113,8 +113,6 @@ req_put(struct msg *msg)
       struct conn *c_conn = (struct conn*)msg->owner;
       if (c_conn){
 	      struct server_pool *sp = (struct server_pool*)c_conn->owner;
-printf("----------wgu--msg:%08x,c_conn:%08x, sp:%08x,sp->ctx:%08x, pname:%08x, h:%08x\n",
-       msg, c_conn, sp, sp->ctx, sp->name.data, sp->histogram);
 	      if (sp) {		
 		      struct context *ctx = sp->ctx;
 		      if (ctx){
@@ -692,8 +690,7 @@ req_recv_done(struct context *ctx, struct conn *conn, struct msg *msg,
             return;
         }
 
-        //status = msg->reply(msg, ctx);
-        status = redis_reply(msg, ctx);
+        status = msg->reply(msg);
         if (status != NC_OK) {
             conn->err = errno;
             return;

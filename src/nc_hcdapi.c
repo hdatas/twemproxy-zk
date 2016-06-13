@@ -16,7 +16,7 @@
  * Output: key
  *         value
  */
-bool 
+static bool 
 setparser(char *buffer, char **key, char **value) 
 {
     char *keybuf;
@@ -25,7 +25,7 @@ setparser(char *buffer, char **key, char **value)
     int count = 0;
     if (!buffer) 
         return false;
-    while(aPtr = strsep(&buffer, "\x0d\x0a")) {
+    while( aPtr = strsep(&buffer, "\x0d\x0a") ) {
         if (count==8) {
           keybuf = aPtr;
         }
@@ -63,41 +63,27 @@ h_conf_json_parse(struct conf *cf,
     JSON_Value *root_value = jvalue;
     ASSERT(root_value != NULL);
 
-//    Array* pools = &ctx->pool;
-//    size_t num_pools = json_array_get_count(pools);
-
-//printf("====wgu===h_conf_json_parse, pool: %s, pools: %08x, total pools: %d\n", cf->pool, (int)pools, num_pools);
-printf("=***===wgu===h_parse pool, before pool #: %d\n", array_n(&cf->pool));
     struct conf_pool* pool = (struct conf_pool*) array_push(&cf->pool);
     if (pool == NULL) {
         status = NC_ENOMEM;
         return status;
     }
-printf("=***===wgu===h_parse pool, after pool #: %d\n", array_n(&cf->pool));
 
     JSON_Object* pool_obj = jobject;
-    int nobj2 = json_object_get_count(pool_obj);
-// pick the first element from json array
-//printf("====wgu 2===before conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x, num-obj:%d\n", (int)pool_obj, pool, pools, nobj2);
     status = conf_json_init_pool(pool_obj, pool, ctx->owner_inst);
     if (status != NC_OK) {
-//printf("====wgu 2===conf_json_parse, pool_obj=%08x, pool:%08x, pools: %08x\n", (int)pool_obj, pool, pools);
             array_pop(&cf->pool);
             return status;
     }
     pool->valid = 1;
-//printf("====wgu 33===conf_json_parse, pool_obj=%08x, pools: %08x\n", (int)pool_obj, pools);
-    
-//    json_value_free(root_value);
 
     return status;
 }
 
 
-struct conf *
-h_conf_json_create(char *filename, 
-              struct msg *msg, struct context *ctx,
-              JSON_Value *jvalue, JSON_Object* jobject)
+static struct conf *
+h_conf_json_create(char *filename, struct msg *msg, struct context *ctx,
+                   JSON_Value *jvalue, JSON_Object* jobject)
 {
     rstatus_t status = NC_OK;
     struct conf *cf;
@@ -122,7 +108,6 @@ h_conf_json_create(char *filename,
     }
 
     cf->valid = 1;
-//    conf_json_dump(cf);
 
     return cf;
 
@@ -133,22 +118,11 @@ error:
     return NULL;
 }
 
-void 
-printctx(struct msg *msg) {
-  struct conn *c_conn;
-  struct msg *response = msg->peer;
-  struct server_pool *pool;
-  c_conn = response->owner;
-  pool = c_conn->owner;
-
-  printf("!!!!!!!!!!!wgu!! pool->ctx: %08x\n", pool->ctx);
-}
-
 static rstatus_t
 h_stats_pool_map(struct array *stats_pool, struct array *server_pool)
 {
     rstatus_t status;
-    uint32_t i, npool;
+    uint32_t npool;
 
     npool = array_n(server_pool);
     ASSERT(npool != 0);
@@ -166,6 +140,7 @@ h_stats_pool_map(struct array *stats_pool, struct array *server_pool)
     return NC_OK;
 }
 
+static bool
 h_hdr_init(struct server_pool* sp)
 {
     // Init hdr-histogram
@@ -173,10 +148,14 @@ h_hdr_init(struct server_pool* sp)
     int64_t highest = 1000000000;
     int sig_digits = 3;
 
-    hdr_init(lowest, highest, sig_digits, &sp->histogram);
+    if (hdr_init(lowest, highest, sig_digits, &sp->histogram) == ENOMEM) {
+       return false;
+    }
     pthread_mutex_init(&sp->histo_lock, NULL);
+    return true;
 }
 
+static struct stats *
 h_stats_create(struct stats *st, struct array *server_pool)
 {
     rstatus_t status=NC_OK;
@@ -195,69 +174,49 @@ h_stats_create(struct stats *st, struct array *server_pool)
     if (status != NC_OK) {
         goto error;
     }
-printf("==========================================wgu===stat:%08x\n", st->lock);
-//    status = stats_create_buf(st);
-//    if (status != NC_OK) {
-//        goto error;
-//    }
-
-//    status = stats_start_aggregator(st);
-//    if (status != NC_OK) {
-//        goto error;
-//    }
 
     return st;
 
 error:
-//    stats_destroy(st);
     return NULL;
-
 }
 
 
-bool
+static bool
 h_ctx_create(struct context *ctx, struct conf_pool *conf_pool, 
              struct array *server_pool, JSON_Object* pool_obj, struct msg* msg)
 {
-    
-//    printf("=====wgu==h_ctx_create: array_n(&ctx->pool):%d, sp->lock:%08x\n", 
-//           array_n(&ctx->pool), sp->lock);
-//    pthread_mutex_init(&sp->lock, NULL);
-//    pthread_mutex_lock(&sp->lock);
-printf("!!!=====wgu000===ctx:%08x\n", ctx);    
-printctx(msg); 
     conf_pool_each_transform(conf_pool, server_pool);
 
-printf("!!!=====wgu0===ctx:%08x\n", ctx);    
-printctx(msg); 
     struct server_pool *sp;
     sp = array_get(&ctx->pool, array_n(&ctx->pool)-1);
     sp->ctx = ctx;
-    h_hdr_init(sp);
-    h_stats_create(ctx->stats, server_pool);
+    if (h_hdr_init(sp)==false) {
+        return false;
+    }
+    if (h_stats_create(ctx->stats, server_pool) == false) {
+        return false;
+    }
     // Apply the updated pool conf to server_pool.
     pthread_mutex_lock(&sp->lock);
     update_server_shards_from_conf_json(pool_obj, &sp->shards, sp);
     pthread_mutex_unlock(&sp->lock);
  
-//    server_pool_each_preconnect(array_get(&ctx->pool,array_n(&ctx->pool)-1), NULL);
-    proxy_each_init(array_get(&ctx->pool, array_n(&ctx->pool)-1), NULL);
-//    pthread_mutex_unlock(&sp->lock);
-
+    if (proxy_each_init(array_get(&ctx->pool, array_n(&ctx->pool)-1), NULL) == NC_OK) {
+        return true;
+    } else {
+        log_debug(LOG_NOTICE, "Fail to start proxy for new pool \"%s\"", sp->name.data);
+        return false;
+    }
 }
 
-bool
+static bool
 h_create_pool(char *buffer, unsigned len,  
               struct msg *msg, struct context *ctx,
               JSON_Value *jvalue, JSON_Object* jobject)
 {
-    rstatus_t status = NC_OK;
-    nc_write_file("h_tempfile", buffer, strlen(buffer)); 
+    nc_write_file("h_tempfile", buffer, (int)strlen(buffer)); 
 
-//JSON_Array* pools = &ctx->pool;
-//size_t num_pools = json_array_get_count(pools);
-
-//printf("====wgu===h_create_pool, before pool #: %d, NC_OK=%d\n", array_n(pools), NC_OK);
     struct conf *cf;
     cf = h_conf_json_create("h_tempfile", msg, ctx, jvalue, jobject);
     remove("h_tempfile");
@@ -265,37 +224,33 @@ h_create_pool(char *buffer, unsigned len,
       return NULL;
     }
 
-printctx(msg); 
     struct conf_pool *cf_pool = array_get(&cf->pool, 0);
-    h_ctx_create(ctx, cf_pool, &ctx->pool, jobject, msg);
-printf("====wgu===HCD Done===========================\n"); 
 
-    return true;
+    if (h_ctx_create(ctx, cf_pool, &ctx->pool, jobject, msg)) {
+        log_debug(LOG_NOTICE, "HCD done creating a new pool ");
+        return true;
+    }  
+    return false;
 }
 
 bool 
-hcdset(char *buffer, unsigned len, struct msg *msg, struct context *ctx)
+hcdset(char *buffer, unsigned len, struct msg *msg)
 {
     char *keybuf, *valuebuf;
     struct conn *c_conn;
     struct msg *response = msg->peer;
     struct server_pool *pool;
-    struct array *pools = &ctx->pool;
 
     c_conn = response->owner;
     pool = c_conn->owner;
-    log_debug(LOG_NOTICE, "c_conn proxy = %d, client = %d\n", c_conn->proxy, c_conn->client);
-
-//    msg->owner = c_conn;
-printf("!!!=====wgu===msg:%08x, owner:%08x == c_conn:%08x, pool->ctx:%08x, ctx:%08x, pname:%s\n", 
-       msg, msg->owner, c_conn, pool->ctx, ctx, pool->name.data);    
-
+    struct context *ctx = pool->ctx;
+    struct array *pools = &ctx->pool;
+    log_debug(LOG_NOTICE, "hcd msg received at:%08x, owner:%08x, ctx:%08x, pname:%s", 
+              msg, msg->owner, ctx, pool->name.data);
     ASSERT(array_n(pools)>0);
-//    ASSERT(true==setparser(buffer, &keybuf, &valuebuf));
-    if (false == setparser(buffer, &keybuf, &valuebuf)) {
+    if (setparser(buffer, &keybuf, &valuebuf) == false) {
         return false;
     }
-    log_debug(LOG_NOTICE, "Key   = %s\nValue = %s\n", keybuf, valuebuf);
 
     JSON_Value *jroot = json_parse_string_with_comments(valuebuf);
     if (!jroot || (JSONObject != json_type(jroot))) {
@@ -306,20 +261,22 @@ printf("!!!=====wgu===msg:%08x, owner:%08x == c_conn:%08x, pool->ctx:%08x, ctx:%
     ASSERT(pool_obj!=NULL);
     char *name_input = json_object_get_string(pool_obj, "name");
     ASSERT(name_input!=NULL);
-printf("=========wgu===pool array_n: %d\n", array_n(pools));
+    log_debug(LOG_NOTICE, "Total pools:%d, Key = %s, Value = %s", 
+              array_n(pools), keybuf, valuebuf);
     bool same_pool=false;
     for (uint32_t i = 0; i < array_n(pools); i++ ) {
         struct server_pool *sp = (struct server_pool *)array_get(pools, i);  
         if (strncmp(name_input, sp->name.data, strlen(sp->name.data))==0) {
             same_pool = true;
-            printf("====wgu== pool name is the same, name_input:%s\n", name_input);
             break;
         } 
     }
 
     if (same_pool) {
+        log_debug(LOG_NOTICE, "Update the existing pool config at \"%s\"", name_input); 
         return hcdsetbuf(valuebuf, len, pool, msg, ctx);
     } else {
+        log_debug(LOG_NOTICE, "Create a new pool config for \"%s\"", name_input); 
         return h_create_pool(valuebuf, len, msg, ctx, jroot, pool_obj);
     }
 }

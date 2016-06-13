@@ -217,7 +217,6 @@ proxy_each_init(void *elem, void *data)
               pool->addrstr.data, pool->redis ? "redis" : "memcache",
               pool->idx, pool->name.len, pool->name.data,
               array_n(&pool->server));
-
     return NC_OK;
 }
 

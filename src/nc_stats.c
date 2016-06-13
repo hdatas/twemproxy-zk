@@ -725,10 +725,9 @@ static void
 stats_summarize_latency(struct stats *st)
 {
     struct context *ctx = st->context;
-//    assert(array_n(&st->sum) == 1);
+
     for (int i = 0; i < array_n(&st->sum); i++) {
         struct stats_pool *stp = array_get(&st->sum, i);
-        //log_error("summarize latency for pool %s\n", stp->name.data);
 
         struct stats_metric *lat_min = array_get(&stp->metric, 10);
         struct stats_metric *lat_max = array_get(&stp->metric, 11);
@@ -737,8 +736,6 @@ stats_summarize_latency(struct stats *st)
         struct stats_metric *lat_p95 = array_get(&stp->metric, 14);
         struct stats_metric *lat_p99 = array_get(&stp->metric, 15);
 
-printf("-----------wgu-- pool:%s, pool id:%d, lat_min:%08x, value:%d)))))))))))))))\n", 
-    stp->name.data, i, lat_min, lat_min->value.counter);
         struct server_pool *sp = array_get(&ctx->pool, i);
         lat_min->value.counter = hdr_value_at_percentile(sp->histogram, 0);
         lat_max->value.counter = hdr_max(sp->histogram);
@@ -746,6 +743,10 @@ printf("-----------wgu-- pool:%s, pool id:%d, lat_min:%08x, value:%d))))))))))))
         lat_p90->value.counter = hdr_value_at_percentile(sp->histogram, 90);
         lat_p95->value.counter = hdr_value_at_percentile(sp->histogram, 95);
         lat_p99->value.counter = hdr_value_at_percentile(sp->histogram, 99);
+
+        log_debug(LOG_NOTICE, "Pool name:%s, idx:%d, lat_min:%d, max:%d, p50:%d",
+                  stp->name.data, i, lat_min->value.counter, 
+                  lat_max->value.counter, lat_p50->value.counter);
 
         // After recording the metrics, clear histogram record, and start tracking
         // for the next reporting results.

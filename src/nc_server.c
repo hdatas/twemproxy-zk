@@ -229,8 +229,6 @@ server_each_preconnect(void *elem, void *data)
     server = elem;
     pool = server->owner;
 
-printf("=====wgu==server_each_preconnect server:%08x, owner:%08x, pool->ctx:%08x\n", 
-       server, server->owner, pool->ctx);
     conn = server_conn(server);
     if (conn == NULL) {
         return NC_ENOMEM;
@@ -818,7 +816,6 @@ server_pool_each_preconnect(void *elem, void *data)
 {
     rstatus_t status;
     struct server_pool *sp = elem;
-printf("=====wgu==server_pool_each_preconnect sp:%08x, nsp:%08x\n", sp, array_n(&sp->server));
     if (!sp->preconnect) {
         return NC_OK;
     }
@@ -1194,7 +1191,6 @@ server_pool_init(struct array *server_pool, struct array *conf_pool,
 {
     rstatus_t status;
     uint32_t npool;
-printf("----------------------server_pool_init\n");
     npool = array_n(conf_pool);
     ASSERT(npool != 0);
     ASSERT(array_n(server_pool) == 0);

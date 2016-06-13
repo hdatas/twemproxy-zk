@@ -27,7 +27,7 @@
 #include <nc.h>
 
 //#define NC_CONF_PATH        "conf/nutcracker.yml"
-#define NC_CONF_PATH        "conf/proxy-POOL1"
+#define NC_CONF_PATH        "conf/default.json"
 
 #define NC_LOG_DEFAULT      LOG_VVVERB
 

@@ -24,7 +24,7 @@ typedef void (*msg_parse_t)(struct msg *);
 typedef rstatus_t (*msg_add_auth_t)(struct context *ctx, struct conn *c_conn, struct conn *s_conn);
 typedef rstatus_t (*msg_fragment_t)(struct msg *, uint32_t, struct msg_tqh *);
 typedef void (*msg_coalesce_t)(struct msg *r);
-typedef rstatus_t (*msg_reply_t)(struct msg *r, struct context *ctx);
+typedef rstatus_t (*msg_reply_t)(struct msg *r);
 typedef bool (*msg_failure_t)(struct msg *r);
 
 typedef enum msg_parse_result {

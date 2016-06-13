@@ -123,7 +123,12 @@ core_ctx_create(struct instance *nci)
     npool = array_n(&ctx->pool);
     for (i=0; i < npool; i++) {
         struct server_pool* svp = array_get(&ctx->pool, i);
-        hdr_init(lowest, highest, sig_digits, &svp->histogram);
+        if (hdr_init(lowest, highest, sig_digits, &svp->histogram) == ENOMEM) {
+            server_pool_deinit(&ctx->pool);
+            conf_destroy(ctx->cf);
+            nc_free(ctx);
+            return NULL;
+        }
         pthread_mutex_init(&svp->histo_lock, NULL);
     }
 
@@ -355,10 +360,7 @@ core_core(void *arg, uint32_t events)
     }
     struct server_pool *mypool;
     mypool = conn->owner;
-printf("=========wgu==core_core: conn:%08x, conn->owner->ctx:%08x, mypool:%08x\n", 
-        conn, mypool->ctx, mypool);
     ctx = conn_to_ctx(conn);
-printf("=========wgu==core_core: ctx:%08x after\n", ctx);
 
     log_debug(LOG_VVERB, "event %04"PRIX32" on %c %d", events,
               conn->client ? 'c' : (conn->proxy ? 'p' : 's'), conn->sd);
