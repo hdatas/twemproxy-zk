@@ -87,11 +87,11 @@ A quick checklist:
 
 twemproxy starts with a default dummy configuration file at conf/default.json and receives remote HCD dedicated Java redis client update (redis command: "hcdsetproxy poolname JSON-string"). If a new pool configuration is received, twemproxy will add this new pool to its internal pools, otherwise (if the same pool) update the existing pool.
 
-Command line: nutcracker
-Statistic Histogram at default port: telnet 0.0.0.0 22225
-
-Default configuration file:
-conf/default.json
+     Command line: nutcracker
+     Statistic Histogram at default port: telnet 0.0.0.0 22225
+     
+     Default configuration file:
+     conf/default.json
      {
        "pools": [
          {   
