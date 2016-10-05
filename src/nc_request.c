@@ -31,7 +31,7 @@ req_get(struct conn *conn)
     }
 
     // Record time whne this msg is created.
-    msg->timestamp = nc_now_us();
+    msg->timestamp = nc_usec_now();
     return msg;
 }
 

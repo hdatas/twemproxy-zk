@@ -647,15 +647,6 @@ nc_unresolve_desc(int sd)
     return nc_unresolve_addr(addr, addrlen);
 }
 
-// Get current time in micro-seconds.
-uint64_t
-nc_now_us()
-{
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000);
-}
-
 int
 nc_write_file(char *filepath, char *buf, int buf_len)
 {
