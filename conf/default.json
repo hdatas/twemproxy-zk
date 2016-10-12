@@ -8,7 +8,7 @@
       "redis": true,
       "server_retry_timeout": 2000,
       "proxy": [
-        "127.0.0.1:22121"
+        "0.0.0.0:22121"
       ],
       "shards": [],
       "server_failure_limit": 1,
