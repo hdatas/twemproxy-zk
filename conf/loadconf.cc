@@ -61,7 +61,9 @@ bool WriteConfig2Redis(Json::Value& root, redisContext* c) {
   Json::FastWriter fastWriter;
   string output = fastWriter.write(root);
 
-  redisReply* reply = (redisReply*)redisCommand(c, "hcdsetproxy %b", output.c_str(), output.size());
+  const char *dummy = "test";
+  redisReply* reply =
+    (redisReply*)redisCommand(c, "hcdsetproxy %s %b", dummy, output.c_str(), output.size());
   if (!reply) {
     printf("cmd failed, c->err = %d(%s)\n", c->err, c->errstr);
   } else {
