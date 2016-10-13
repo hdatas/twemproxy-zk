@@ -2703,6 +2703,8 @@ redis_fragment(struct msg *r, uint32_t ncontinuum, struct msg_tqh *frag_msgq)
     }
 }
 
+extern int proxy_ret_port;
+
 rstatus_t
 redis_reply(struct msg *r)
 {
@@ -2730,7 +2732,9 @@ redis_reply(struct msg *r)
         struct server_pool* spp = c_conn->owner;
         bool ret = hcdset((STAILQ_FIRST(&r->mhdr))->pos, buflen, r);
         if (ret) {
-          return msg_append(response, rsp_hcdproxy.data, rsp_hcdproxy.len);
+          char *buf_p;
+          sprintf(buf_p, "+%d\r\n", proxy_ret_port);
+          return msg_append(response, buf_p, sizeof(buf_p));
         } else {
           return msg_append(response, rsp_hcdproxy_err.data, rsp_hcdproxy_err.len);
         }

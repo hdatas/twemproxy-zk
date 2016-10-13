@@ -146,9 +146,20 @@ proxy_listen(struct context *ctx, struct conn *p)
 
     status = bind(p->sd, p->addr, p->addrlen);
     if (status < 0) {
-        log_error("bind on p %d to addr '%.*s' failed: %s", p->sd,
+        // if non-zero port bind fails, try bind again with port #0
+        if (htons(((struct sockaddr_in *)(p->addr))->sin_port) != 0) {
+            ((struct sockaddr_in *)(p->addr))->sin_port = 0;
+            status = bind(p->sd, p->addr, p->addrlen);
+            if (status < 0) {
+                log_error("bind on p %d to addr '%.*s' failed again: %s", p->sd,
                   pool->addrstr.len, pool->addrstr.data, strerror(errno));
-        return NC_ERROR;
+                return NC_ERROR;
+            }
+        } else {
+            log_error("bind on p %d to addr '%.*s' failed: %s", p->sd,
+                  pool->addrstr.len, pool->addrstr.data, strerror(errno));
+            return NC_ERROR;
+        }
     }
 
     if ((p->family == AF_UNIX) && pool->perm) {
@@ -167,6 +178,12 @@ proxy_listen(struct context *ctx, struct conn *p)
                   pool->addrstr.len, pool->addrstr.data, strerror(errno));
         return NC_ERROR;
     }
+
+    extern int proxy_ret_port;
+    int len = sizeof(struct sockaddr);
+    struct sockaddr_in ret_addr;
+    getsockname(p->sd, (struct sockaddr *) &ret_addr, &len);
+    proxy_ret_port = ntohs(ret_addr.sin_port);
 
     status = nc_set_nonblocking(p->sd);
     if (status < 0) {

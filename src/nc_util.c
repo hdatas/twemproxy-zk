@@ -471,7 +471,7 @@ nc_resolve_inet(struct string *name, int port, struct sockinfo *si)
     char *node, service[NC_UINTMAX_MAXLEN];
     bool found;
 
-    ASSERT(nc_valid_port(port));
+    //ASSERT(nc_valid_port(port));
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_NUMERICSERV;

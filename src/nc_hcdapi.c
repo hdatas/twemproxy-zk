@@ -11,6 +11,8 @@
 #include <nc_server.h>
 #include <parson/parson.h>
 
+int proxy_ret_port;  // >0 for new proxy port number
+
 /*
  * Input:  buffer with redis SET parameters  
  * Output: key
@@ -264,8 +266,9 @@ hcdset(char *buffer, unsigned len, struct msg *msg)
     log_debug(LOG_NOTICE, "Total pools:%d, Key = %s, Value = %s", 
               array_n(pools), keybuf, valuebuf);
     bool same_pool=false;
+    struct server_pool *sp;
     for (uint32_t i = 0; i < array_n(pools); i++ ) {
-        struct server_pool *sp = (struct server_pool *)array_get(pools, i);  
+        sp = (struct server_pool *)array_get(pools, i);  
         if (strncmp(name_input, sp->name.data, strlen(sp->name.data))==0) {
             same_pool = true;
             break;
@@ -274,7 +277,7 @@ hcdset(char *buffer, unsigned len, struct msg *msg)
 
     if (same_pool) {
         log_debug(LOG_NOTICE, "Update the existing pool config at \"%s\"", name_input); 
-        return hcdsetbuf(valuebuf, len, pool, msg, ctx);
+        return hcdsetbuf(valuebuf, len, sp, msg, ctx);
     } else {
         log_debug(LOG_NOTICE, "Create a new pool config for \"%s\"", name_input); 
         return h_create_pool(valuebuf, len, msg, ctx, jroot, pool_obj);
