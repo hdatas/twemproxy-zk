@@ -147,6 +147,24 @@ rsp_filter(struct context *ctx, struct conn *conn, struct msg *msg)
 
     ASSERT(!conn->client && !conn->proxy);
 
+    // This is the response for (p)subscribe command.
+    // We simply check for failure in that case.
+    // Whenever we receive a published message, it goes here.
+    if (msg->is_pmessage && conn->is_pubsub_conn) {
+        if (msg->failure(msg)) {
+            log_debug(LOG_INFO, "server failure rsp %"PRIu64" len %"PRIu32" "
+                      "type %d on s %d", msg->id, msg->mlen, msg->type, conn->sd);
+            rsp_put(msg);
+
+            conn->err = EINVAL;
+            conn->done = 1;
+
+            return true;
+        }
+
+        return false;
+    }
+
     if (msg_empty(msg)) {
         ASSERT(conn->rmsg == NULL);
         log_debug(LOG_VERB, "filter empty rsp %"PRIu64" on s %d", msg->id,
@@ -183,6 +201,7 @@ rsp_filter(struct context *ctx, struct conn *conn, struct msg *msg)
         conn->done = 1;
         return true;
     }
+  
     ASSERT(pmsg->peer == NULL);
     ASSERT(pmsg->request && !pmsg->done);
 
@@ -246,31 +265,64 @@ rsp_forward(struct context *ctx, struct conn *s_conn, struct msg *msg)
     /* response from server implies that server is ok and heartbeating */
     server_ok(ctx, s_conn);
 
-    /* dequeue peer message (request) from server */
-    pmsg = TAILQ_FIRST(&s_conn->omsg_q);
-    ASSERT(pmsg != NULL && pmsg->peer == NULL);
-    ASSERT(pmsg->request && !pmsg->done);
+    if (msg->is_pmessage) {
+        // This is a (p)message triggered by 'PUBLISH' command.
+        ASSERT(s_conn->is_pubsub_conn);
+        c_conn = s_conn->peer_conn;
 
-    s_conn->dequeue_outq(ctx, s_conn, pmsg);
-    pmsg->done = 1;
+        ASSERT(c_conn != NULL);
+        ASSERT(c_conn->client && !c_conn->proxy);
 
-    /* establish msg <-> pmsg (response <-> request) link */
-    pmsg->peer = msg;
-    msg->peer = pmsg;
+        log_debug(LOG_VERB, "Pmessage rsp_forward: msg=%u type=%u, s_conn=0x%08x, is_pubsub_conn=%d, c_conn=0x%08x, is_pubsub_conn=%d",
+                msg->id, msg->type, s_conn, s_conn->is_pubsub_conn, c_conn, c_conn->is_pubsub_conn); // chaoqun
 
-    msg->pre_coalesce(msg);
+        TAILQ_INSERT_TAIL(&c_conn->pubmsg_q, msg, pub_tqe);
+        ++c_conn->pubmsg_count;
 
-    c_conn = pmsg->owner;
-    ASSERT(c_conn->client && !c_conn->proxy);
-
-    if (req_done(c_conn, TAILQ_FIRST(&c_conn->omsg_q))) {
+        c_conn->send_active = 0;
         status = event_add_out(ctx->evb, c_conn);
         if (status != NC_OK) {
             c_conn->err = errno;
         }
+    } else {
+        /* dequeue peer message (request) from server */
+        pmsg = TAILQ_FIRST(&s_conn->omsg_q);
+
+        ASSERT(pmsg != NULL && pmsg->peer == NULL);
+        ASSERT(pmsg->request && !pmsg->done);
+
+        s_conn->dequeue_outq(ctx, s_conn, pmsg);
+
+        pmsg->done = 1;
+
+        /* establish msg <-> pmsg (response <-> request) link */
+        pmsg->peer = msg;
+        msg->peer = pmsg;
+
+        msg->pre_coalesce(msg);
+        c_conn = pmsg->owner;
+
+        if (pmsg->is_pubsub == 1) {
+            log_debug(LOG_VERB, "Subscribing... msg=%u type=%u, pmsg=%u type=%u, pmsg is_pubsub, s_conn=0x%08x, c_conn=0x%08x",
+                        msg->id, msg->type, pmsg->id, pmsg->type, s_conn, c_conn); // chaoqun
+
+        } else if (pmsg->is_pubsub == 2) {
+            log_debug(LOG_VERB, "UNsubscrubing... msg=%u type=%u, pmsg=%u type=%u, pmsg is_pubsub, s_conn=0x%08x, c_conn=0x%08x",
+                        msg->id, msg->type, pmsg->id, pmsg->type, s_conn, c_conn); // chaoqun
+        }
+
+        ASSERT(c_conn->client && !c_conn->proxy);
+
+        if (req_done(c_conn, TAILQ_FIRST(&c_conn->omsg_q))) {
+            status = event_add_out(ctx->evb, c_conn);
+            if (status != NC_OK) {
+                c_conn->err = errno;
+            }
+        }
     }
 
     rsp_forward_stats(ctx, s_conn->owner, msg, msgsize);
+
 }
 
 void
@@ -302,6 +354,7 @@ rsp_send_next(struct context *ctx, struct conn *conn)
     ASSERT(conn->client && !conn->proxy);
 
     pmsg = TAILQ_FIRST(&conn->omsg_q);
+
     if (pmsg == NULL || !req_done(conn, pmsg)) {
         /* nothing is outstanding, initiate close? */
         if (pmsg == NULL && conn->eof) {
@@ -355,6 +408,8 @@ void
 rsp_send_done(struct context *ctx, struct conn *conn, struct msg *msg)
 {
     struct msg *pmsg; /* peer message (request) */
+    struct conn *s_conn = NULL;
+
     ASSERT(conn->client && !conn->proxy);
     ASSERT(conn->smsg == NULL);
 
@@ -366,8 +421,19 @@ rsp_send_done(struct context *ctx, struct conn *conn, struct msg *msg)
     ASSERT(pmsg->peer == msg);
     ASSERT(pmsg->done && !pmsg->swallow);
 
+    // reset the connection status.
+    if (pmsg->is_brpop) {
+        s_conn = msg->owner;
+        if (s_conn != NULL) {
+            log_debug(LOG_VVERB, "rsp_send_done: clear s_conn=0x%08x attr[is_brpop_conn] from %d to 0",
+                    s_conn, s_conn->is_brpop_conn); //chaoqun
+            s_conn->is_brpop_conn = 0;
+        }
+    }
+
     /* dequeue request from client outq */
     conn->dequeue_outq(ctx, conn, pmsg);
 
     req_put(pmsg);
+
 }

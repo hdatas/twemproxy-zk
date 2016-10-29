@@ -237,6 +237,9 @@ core_recv(struct context *ctx, struct conn *conn)
         log_debug(LOG_INFO, "recv on %c %d failed: %s",
                   conn->client ? 'c' : (conn->proxy ? 'p' : 's'), conn->sd,
                   strerror(errno));
+        log_warn("recv on %c %d failed: %s",
+                  conn->client ? 'c' : (conn->proxy ? 'p' : 's'), conn->sd,
+                  strerror(errno)); //chaoqun
     }
 
     return status;
@@ -252,6 +255,9 @@ core_send(struct context *ctx, struct conn *conn)
         log_debug(LOG_INFO, "send on %c %d failed: status: %d errno: %d %s",
                   conn->client ? 'c' : (conn->proxy ? 'p' : 's'), conn->sd,
                   status, errno, strerror(errno));
+        log_warn("send on %c %d failed: status: %d errno: %d %s",
+                  conn->client ? 'c' : (conn->proxy ? 'p' : 's'), conn->sd,
+                  status, errno, strerror(errno)); //chaoqun
     }
 
     return status;
@@ -277,6 +283,13 @@ core_close(struct context *ctx, struct conn *conn)
               conn->eof, conn->done, conn->recv_bytes, conn->send_bytes,
               conn->err ? ':' : ' ', conn->err ? strerror(conn->err) : "");
 
+    if (conn->err) {
+        log_warn("close %c %d '%s' on event %04"PRIX32" eof %d done "
+              "%d rb %zu sb %zu%c %s", type, conn->sd, addrstr, conn->events,
+              conn->eof, conn->done, conn->recv_bytes, conn->send_bytes,
+              conn->err ? ':' : ' ', conn->err ? strerror(conn->err) : ""); 
+    }//chaoqun
+    
     status = event_del_conn(ctx->evb, conn);
     if (status < 0) {
         log_warn("event del conn %c %d failed, ignored: %s",
@@ -339,6 +352,7 @@ core_timeout(struct context *ctx)
         }
 
         log_debug(LOG_INFO, "req %"PRIu64" on s %d timedout", msg->id, conn->sd);
+        log_warn("req %"PRIu64" on s %d timedout", msg->id, conn->sd); //chaoqun
 
         msg_tmo_delete(msg);
         conn->err = ETIMEDOUT;
@@ -375,6 +389,7 @@ core_core(void *arg, uint32_t events)
 
     /* read takes precedence over write */
     if (events & EVENT_READ) {
+        log_debug(LOG_VVERB, "core receving on conn=0x%08x...", conn); //chaoqun
         status = core_recv(ctx, conn);
         if (status != NC_OK || conn->done || conn->err) {
             core_close(ctx, conn);
@@ -383,6 +398,7 @@ core_core(void *arg, uint32_t events)
     }
 
     if (events & EVENT_WRITE) {
+        log_debug(LOG_VVERB, "core sending on conn=0x%08x...", conn); //chaoqun
         status = core_send(ctx, conn);
         if (status != NC_OK || conn->done || conn->err) {
             core_close(ctx, conn);

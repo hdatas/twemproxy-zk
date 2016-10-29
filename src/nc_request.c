@@ -605,20 +605,98 @@ req_forward(struct context *ctx, struct conn *c_conn, struct msg *msg)
 
     pool = c_conn->owner;
 
-    ASSERT(array_n(msg->keys) > 0);
-    kpos = array_get(msg->keys, 0);
-    key = kpos->start;
-    keylen = (uint32_t)(kpos->end - kpos->start);
+    // TODO(chaoqun): Should update partition rule or use a good key that have
+    // client connection information.
+    switch (msg->type) {
+        case MSG_REQ_REDIS_MULTI: {
+            keylen = 5;
+            key = nc_calloc(keylen, sizeof(char));
+            nc_memcpy(key, "multi", keylen);
+        }
+            break;
+        case MSG_REQ_REDIS_EXEC: {
+            keylen = 4;
+            key = nc_calloc(keylen, sizeof(char));
+            nc_memcpy(key, "exec", keylen);
+        }
+            break;
+        case MSG_REQ_REDIS_WATCH: {
+            keylen = 5;
+            key = nc_calloc(keylen, sizeof(char));
+            nc_memcpy(key, "watch", keylen);
+        }
+            break;
+        case MSG_REQ_REDIS_UNWATCH: {
+            keylen = 7;
+            key = nc_calloc(keylen, sizeof(char));
+            nc_memcpy(key, "unwatch", keylen);
+        }
+            break;
+        case MSG_REQ_REDIS_DISCARD: {
+            keylen = 7;
+            key = nc_calloc(keylen, sizeof(char));
+            nc_memcpy(key, "discard", keylen);
+        }
+            break;
+        case MSG_REQ_REDIS_UNSUBSCRIBE:
+            if ((msg->keys == NULL) || (array_n(msg->keys) == 0)) {
+                keylen = 11;
+                key = nc_calloc(keylen, sizeof(char));
+                nc_memcpy(key, "unsubscribe", keylen);
+                break;
+            }
+        case MSG_REQ_REDIS_PUNSUBSCRIBE:
+            if ((msg->keys == NULL) || (array_n(msg->keys) == 0)) {
+                keylen = 12;
+                key = nc_calloc(keylen, sizeof(char));
+                nc_memcpy(key, "punsubscribe", keylen);
+                break;
+            }
+        default: {
+            ASSERT(array_n(msg->keys) > 0);
+            kpos = array_get(msg->keys, 0);
+            key = kpos->start;
+            keylen = (uint32_t)(kpos->end - kpos->start);
+        }
+            break;
+    }
+
     //char keyt[64];
     //memset(keyt, 0, sizeof(keyt));
     //keyt[keylen] = '\0';
     //memcpy(keyt, key, keylen);
     //printf("incoming key: %s\n",keyt);
 
+    log_debug(LOG_VVERB, "REQ_forward: c_conn=0x%08x, peer_conn=0x%08x brpop_conn=%d, pubsub_conn=%d; MSG: is_pubsub=%d, is_brpop=%d, is_transc=%d",
+              c_conn, c_conn->peer_conn, c_conn->is_brpop_conn, c_conn->is_pubsub_conn, msg->is_pubsub, msg->is_brpop, msg->is_transc); // chaoqun
+
     pthread_mutex_lock(&pool->lock);
-    s_conn = server_pool_conn(ctx, c_conn->owner, key, keylen);
+    if (msg->is_pubsub && c_conn->peer_conn != NULL) {
+        if (msg->is_pubsub == 1) {
+            ++c_conn->pubsub_count;
+        } else {
+            --c_conn->pubsub_count;
+        }
+        s_conn = c_conn->peer_conn;
+    } else {
+        s_conn = server_pool_conn(ctx, c_conn->owner, key, keylen);
+        if (s_conn != NULL) {
+            // whenever it is a (p)subscribe command, we mark the server connection so
+            // further other commands could not be entered the same any more.
+            if (msg->is_pubsub) {
+                s_conn->is_pubsub_conn = 1;
+                s_conn->peer_conn = c_conn;
+                c_conn->is_pubsub_conn = 1;
+                c_conn->peer_conn = s_conn;
+            } else if (msg->is_brpop) {
+                s_conn->is_brpop_conn = 1;
+                //c_conn->is_brpop_conn = 1; // We don't care client connection status for 'BRPOP' 
+            }
+        }
+    }
     pthread_mutex_unlock(&pool->lock);
     if (s_conn == NULL) {
+        log_debug(LOG_NOTICE, "NO server connections available."); //chaoqun
         req_forward_error(ctx, c_conn, msg);
         return;
     }

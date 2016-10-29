@@ -41,6 +41,7 @@ typedef void (*conn_swallow_msg_t)(struct conn *, struct msg *, struct msg *);
 struct conn {
     TAILQ_ENTRY(conn)   conn_tqe;        /* link in server_pool / server / free q */
     void                *owner;          /* connection owner - server_pool / server */
+    struct conn         *peer_conn;      /* remember peer server/client connection to support pubsub */
 
     int                 sd;              /* socket descriptor */
     int                 family;          /* socket address family */
@@ -49,8 +50,15 @@ struct conn {
 
     struct msg_tqh      imsg_q;          /* incoming request Q */
     struct msg_tqh      omsg_q;          /* outstanding request Q */
+    struct msg_tqh      pubmsg_q;        /* (p)message Q used for client connection to fetch msg */
     struct msg          *rmsg;           /* current message being rcvd */
     struct msg          *smsg;           /* current message being sent */
+    int                 pubmsg_count;    /* current number of (p)messages in pubmsg_q */
+    int                 pubsub_count;    /* TODO(chaoqun): Right now this only count the number of (p)subscribe(+1) and (p)unsubscribe(-1).
+                                          * If necessary, we should have record for all subscribed channels so that the connection could return
+                                          * to normal state when no more channels are subscribed. (Most Celery tasks subscribe and unsubscribe
+                                          * to just one channel for one task as far as I know).
+                                          */
 
     conn_recv_t         recv;            /* recv (read) handler */
     conn_recv_next_t    recv_next;       /* recv next message handler */
@@ -89,6 +97,9 @@ struct conn {
     unsigned            done:1;          /* done? aka close? */
     unsigned            redis:1;         /* redis? */
     unsigned            authenticated:1; /* authenticated? */
+
+    unsigned            is_pubsub_conn:1;/* pubsub support between proxy-ardb to ensure the connection is blocked */
+    unsigned            is_brpop_conn:1; /* brpop support to block the server connection to avoid selection */
 };
 
 TAILQ_HEAD(conn_tqh, conn);

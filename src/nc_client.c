@@ -124,6 +124,8 @@ client_close(struct context *ctx, struct conn *conn)
 {
     rstatus_t status;
     struct msg *msg, *nmsg; /* current and next message */
+    struct conn* s_conn = NULL;
+    int c_sd = 0;
 
     ASSERT(conn->client && !conn->proxy);
 
@@ -133,6 +135,11 @@ client_close(struct context *ctx, struct conn *conn)
         conn->unref(conn);
         conn_put(conn);
         return;
+    }
+
+    if (conn->is_pubsub_conn) {
+        s_conn = conn->peer_conn;
+        c_sd = conn->sd;
     }
 
     msg = conn->rmsg;
@@ -177,13 +184,31 @@ client_close(struct context *ctx, struct conn *conn)
     }
     ASSERT(TAILQ_EMPTY(&conn->omsg_q));
 
+    for (msg = TAILQ_FIRST(&conn->pubmsg_q); msg != NULL; msg = nmsg) {
+        nmsg = TAILQ_NEXT(msg, pub_tqe);
+
+        TAILQ_REMOVE(&conn->pubmsg_q, msg, pub_tqe);
+    }
+    ASSERT(TAILQ_EMPTY(&conn->pubmsg_q));
+
     conn->unref(conn);
 
+    log_debug(LOG_VERB, "client_close: ctx=%u, conn=%u, sd=%u", ctx, conn, conn->sd); 
+    log_warn("client_close: ctx=%u, conn=%u, sd=%u", ctx, conn, conn->sd); //chaoqun
     status = close(conn->sd);
     if (status < 0) {
         log_error("close c %d failed, ignored: %s", conn->sd, strerror(errno));
     }
+
     conn->sd = -1;
+    conn->is_pubsub_conn = 0;
 
     conn_put(conn);
+
+    // close server connection as well if it's a pubsub connection.
+    if (s_conn && s_conn->is_pubsub_conn) {
+        log_warn("Closing pubsub server connection when client %d is closing.", c_sd); //chaoqun
+        s_conn->close(ctx, s_conn);
+        s_conn->is_pubsub_conn = 0;
+    }
 }

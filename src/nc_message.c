@@ -151,8 +151,8 @@ msg_tmo_min(void)
 void
 msg_tmo_insert(struct msg *msg, struct conn *conn)
 {
-    struct rbnode *node;
-    int timeout;
+    struct  rbnode *node;
+    int64_t timeout; 
 
     ASSERT(msg->request);
     ASSERT(!msg->quit && !msg->noreply);
@@ -163,6 +163,14 @@ msg_tmo_insert(struct msg *msg, struct conn *conn)
     }
 
     node = &msg->tmo_rbe;
+    if (msg->is_brpop) {
+        timeout += timeout + msg->brpop_timeout * 1000;
+    } else if (msg->is_transc) {
+        timeout += timeout;        // double the timeout for multi-exec transaction as it includes multiple commands
+    } else if (msg->is_pubsub == 1) {
+        timeout += 365 * 24 * 60 * 60 * 1000;   // TODO(chaoqun): we are not sure how long we should set timeout for (p)subscribe command.
+                                                // used one year here which is 0x757b12c00 = 31,536,000,000 msec.
+    }
     node->key = nc_msec_now() + timeout;
     node->data = conn;
 
@@ -271,6 +279,11 @@ done:
     msg->redis = 0;
 
     msg->is_write = 0;  // By default it's not a write req
+    msg->is_transc = 0; // By default it's not a multi req
+    msg->is_brpop = 0;  // By default it's not a brpop req
+    msg->is_pubsub = 0;
+    msg->is_pmessage = 0;
+
     return msg;
 }
 
@@ -353,6 +366,8 @@ msg_get_error(bool redis, err_t err)
 
     log_debug(LOG_VVERB, "get msg %p id %"PRIu64" len %"PRIu32" error '%s'",
               msg, msg->id, msg->mlen, errstr);
+    log_warn("get msg %p id %"PRIu64" len %"PRIu32" error '%s'",
+              msg, msg->id, msg->mlen, errstr); //chaoqun
 
     return msg;
 }
@@ -870,6 +885,80 @@ msg_send(struct context *ctx, struct conn *conn)
     rstatus_t status;
     struct msg *msg;
     ASSERT(conn->send_active);
+
+    
+    log_debug(LOG_VVERB, "Msg_send: is_pubsub_conn=%d, conn=0x%08x, peer_conn=0x%08x, client=%d, proxy=%d",
+            conn->is_pubsub_conn, conn, conn->peer_conn, conn->client, conn->proxy); // chaoqun
+
+    if ((conn->client == 1) && conn->pubmsg_count > 0) {
+            --conn->pubmsg_count;
+            ASSERT(!TAILQ_EMPTY(&conn->pubmsg_q));
+    
+            msg = TAILQ_FIRST(&conn->pubmsg_q);
+            if (msg != NULL) {
+                ASSERT(msg->is_pmessage);
+                log_debug(LOG_VVERB, "Pubsub route: send next rsp %"PRIu64" on c %d", msg->id, conn->sd);
+
+                struct msg_tqh send_msgq;            /* send msg q */
+                struct msg *nmsg;                    /* next msg */
+                struct mbuf *mbuf, *nbuf;            /* current and next mbuf */
+                size_t mlen;                         /* current mbuf data length */
+                struct iovec *ciov, iov[NC_IOV_MAX]; /* current iovec */
+                struct array sendv;                  /* send iovec */
+                size_t nsend, nsent;                 /* bytes to send; bytes sent */
+                size_t limit;                        /* bytes to send limit */
+                ssize_t n;                           /* bytes sent by sendv */
+
+                TAILQ_INIT(&send_msgq);
+
+                array_set(&sendv, iov, sizeof(iov[0]), NC_IOV_MAX);
+
+                nsend = 0;
+                limit = SSIZE_MAX;
+
+
+                TAILQ_INSERT_TAIL(&send_msgq, msg, m_tqe);
+
+                for (mbuf = STAILQ_FIRST(&msg->mhdr);
+                    mbuf != NULL && array_n(&sendv) < NC_IOV_MAX && nsend < limit;
+                    mbuf = nbuf) {
+                    nbuf = STAILQ_NEXT(mbuf, next);
+
+                    if (mbuf_empty(mbuf)) {
+                        continue;
+                    }
+
+                    mlen = mbuf_length(mbuf);
+                    if ((nsend + mlen) > limit) {
+                        mlen = limit - nsend;
+                    }
+
+                    ciov = array_push(&sendv);
+                    ciov->iov_base = mbuf->pos;
+                    ciov->iov_len = mlen;
+
+                    nsend += mlen;
+                }
+
+                if (array_n(&sendv) >= NC_IOV_MAX || nsend >= limit) {
+                    return NC_ERROR;
+                }
+
+    
+                if (!TAILQ_EMPTY(&send_msgq) && nsend != 0) {
+                    n = conn_sendv(conn, &sendv, nsend);
+                } else {
+                    n = 0;
+                }
+
+                TAILQ_REMOVE(&conn->pubmsg_q, msg, pub_tqe);
+            } else {
+                ASSERT(0); // SHOULD NEVER BE REACHED.
+                log_debug(LOG_VVERB, "Pubsub route: NULL msg"); // chaoqun
+            }
+        
+            return NC_OK;
+    } // TODO (chaoqun): the logic here needs to be re-constructed.
 
     conn->send_ready = 1;
     do {

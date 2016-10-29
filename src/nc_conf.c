@@ -2078,6 +2078,24 @@ conf_json_init_pool(JSON_Object* obj,
         pool->shard_range_min = (uint32_t)atoi(json_object_get_string(obj, "pool_begin"));
         pool->shard_range_max = (uint32_t)atoi(json_object_get_string(obj, "pool_end"));
     }
+
+    // concurrent server connections
+    const char* srv_conns = json_object_get_string(obj, "server_connections");
+    if (srv_conns != NULL) {
+        pool->server_connections = (uint32_t)atoi(srv_conns);
+    }
+
+    const char* cli_conns = json_object_get_string(obj, "client_connections");
+    if (cli_conns != NULL) {
+        pool->client_connections = (uint32_t)atoi(cli_conns);
+    }
+
+    // timeout(msec) per connection
+    const char* conn_timeout = json_object_get_string(obj, "connection_timeout");
+    if (conn_timeout != NULL) {
+        pool->timeout = (uint32_t)atoi(conn_timeout);
+    }
+
     // Init shards.
     status = array_init(&pool->shards, CONF_DEFAULT_SHARDS,
                         sizeof(struct conf_shard));
@@ -2117,6 +2135,11 @@ conf_json_init_pool(JSON_Object* obj,
             //string_copy(slv, (uint8_t*)slvstr, (uint32_t)strlen(slvstr));
           }
         }
+
+        const char* shard_status = json_object_get_string(js, "status");
+        if (shard_status != NULL) {
+            nc_memcpy(cfshard->status, shard_status, sizeof(shard_status)); 
+        }      
     }
 
     return NC_OK;

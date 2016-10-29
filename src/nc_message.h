@@ -163,6 +163,18 @@ typedef enum msg_parse_result {
     ACTION( REQ_REDIS_ZSCAN)                                                                        \
     ACTION( REQ_REDIS_EVAL )                   /* redis requests - eval */                          \
     ACTION( REQ_REDIS_EVALSHA )                                                                     \
+    ACTION( REQ_REDIS_KEYS )                                                                        \
+    ACTION( REQ_REDIS_MULTI )                                                                       \
+    ACTION( REQ_REDIS_EXEC )                                                                        \
+    ACTION( REQ_REDIS_DISCARD )                /* simply return OK */                               \
+    ACTION( REQ_REDIS_WATCH )                  /* simply return OK */                               \
+    ACTION( REQ_REDIS_UNWATCH )                /* simply return OK */                               \
+    ACTION( REQ_REDIS_PUBLISH )                /* to support celery-kombu */                        \
+    ACTION( REQ_REDIS_SUBSCRIBE )                                                                   \
+    ACTION( REQ_REDIS_PSUBSCRIBE )             /* 136 */                                            \
+    ACTION( REQ_REDIS_UNSUBSCRIBE )                                                                 \
+    ACTION( REQ_REDIS_PUNSUBSCRIBE )                                                                \
+    ACTION( REQ_REDIS_BRPOP )                                                                       \
     ACTION( REQ_REDIS_PING )                   /* redis requests - ping/quit */                     \
     ACTION( REQ_REDIS_HCDGETPROXY )            /* redis requests - HCD Proxy */                     \
     ACTION( REQ_REDIS_HCDSETPROXY )            /* redis requests - HCD Proxy */                     \
@@ -187,6 +199,7 @@ typedef enum msg_parse_result {
     ACTION( RSP_REDIS_INTEGER )                                                                     \
     ACTION( RSP_REDIS_BULK )                                                                        \
     ACTION( RSP_REDIS_MULTIBULK )                                                                   \
+    ACTION( RSP_REDIS_MULTICMD )                                                                    \
     ACTION( SENTINEL )                                                                              \
 
 
@@ -205,6 +218,7 @@ struct msg {
     TAILQ_ENTRY(msg)     c_tqe;           /* link in client q */
     TAILQ_ENTRY(msg)     s_tqe;           /* link in server q */
     TAILQ_ENTRY(msg)     m_tqe;           /* link in send q / free q */
+    TAILQ_ENTRY(msg)     pub_tqe;         /* link in client pubsub q */
 
     uint64_t             id;              /* message id */
     struct msg           *peer;           /* message peer */
@@ -252,6 +266,7 @@ struct msg {
     struct msg           **frag_seq;      /* sequence of fragment message, map from keys to fragments*/
 
     uint64_t             timestamp;       // when the msg is created, in micro-seconds
+    int64_t              brpop_timeout;   // timeout argument for brpop command.
 
     err_t                err;             /* errno on error? */
     unsigned             error:1;         /* error? */
@@ -265,6 +280,11 @@ struct msg {
     unsigned             swallow:1;       /* swallow response? */
     unsigned             redis:1;         /* redis? */
     unsigned             is_write:1;      /* is this a write rqst? */
+
+    unsigned             is_transc:1;     /* to support multi-exec transaction */
+    unsigned             is_brpop:1;      /* to support brpop */
+    unsigned             is_pubsub:2;     /* to support pubsub: 1: (p)subscribe; 2: (p)unsubscribe */
+    unsigned             is_pmessage:1;   /* indicate if it is a (p)message response triggered from publish command */
 };
 
 TAILQ_HEAD(msg_tqh, msg);

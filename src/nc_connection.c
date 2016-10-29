@@ -108,8 +108,31 @@ conn_to_ctx(struct conn *conn)
 static struct conn *
 _conn_get(void)
 {
-    struct conn *conn;
+    struct conn *conn = NULL;
 
+    while(!TAILQ_EMPTY(&free_connq)) {
+        ASSERT(nfree_connq > 0);
+
+        conn = TAILQ_FIRST(&free_connq);
+        nfree_connq--;
+        TAILQ_REMOVE(&free_connq, conn, conn_tqe);
+        if (conn->is_pubsub_conn || conn->is_brpop_conn) {
+            log_warn("CONN 0x%08x is already ocupied, pubsub_conn=%d, brpop_conn=%d",
+                    conn, conn->is_pubsub_conn, conn->is_brpop_conn); //chaoqun
+            conn = NULL;
+        } else {
+            break;
+        }
+    }
+
+    if (conn == NULL) {
+        conn = nc_alloc(sizeof(*conn));
+        if (conn == NULL) {
+            return NULL;
+        }
+    }
+
+    /*
     if (!TAILQ_EMPTY(&free_connq)) {
         ASSERT(nfree_connq > 0);
 
@@ -122,6 +145,7 @@ _conn_get(void)
             return NULL;
         }
     }
+    */
 
     conn->owner = NULL;
 
@@ -130,6 +154,7 @@ _conn_get(void)
 
     TAILQ_INIT(&conn->imsg_q);
     TAILQ_INIT(&conn->omsg_q);
+    TAILQ_INIT(&conn->pubmsg_q);
     conn->rmsg = NULL;
     conn->smsg = NULL;
 
@@ -157,6 +182,11 @@ _conn_get(void)
     conn->done = 0;
     conn->redis = 0;
     conn->authenticated = 0;
+    conn->is_pubsub_conn = 0;
+    conn->is_brpop_conn = 0;
+    conn->peer_conn = NULL;
+    conn->pubmsg_count = 0;
+    conn->pubsub_count = 0;
 
     ntotal_conn++;
     ncurr_conn++;

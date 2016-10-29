@@ -47,6 +47,9 @@ redis_argz(struct msg *r)
 {
     switch (r->type) {
     case MSG_REQ_REDIS_PING:
+    case MSG_REQ_REDIS_UNWATCH:
+    case MSG_REQ_REDIS_DISCARD:
+    case MSG_REQ_REDIS_EXEC:
     case MSG_REQ_REDIS_QUIT:
         return true;
 
@@ -94,6 +97,7 @@ redis_arg0(struct msg *r)
     case MSG_REQ_REDIS_PFCOUNT:
     case MSG_REQ_REDIS_AUTH:
     case MSG_REQ_REDIS_HCDGETPROXY:
+    case MSG_REQ_REDIS_KEYS:
         return true;
 
     default:
@@ -138,6 +142,7 @@ redis_arg1(struct msg *r)
     case MSG_REQ_REDIS_ZREVRANK:
     case MSG_REQ_REDIS_ZSCORE:
     case MSG_REQ_REDIS_HCDSETPROXY:
+    case MSG_REQ_REDIS_PUBLISH:
         return true;
 
     default:
@@ -272,6 +277,9 @@ redis_argx(struct msg *r)
 {
     switch (r->type) {
     case MSG_REQ_REDIS_MGET:
+    case MSG_REQ_REDIS_WATCH:
+    case MSG_REQ_REDIS_SUBSCRIBE:
+    case MSG_REQ_REDIS_PSUBSCRIBE:
     case MSG_REQ_REDIS_DEL:
         return true;
 
@@ -312,6 +320,60 @@ redis_argeval(struct msg *r)
     switch (r->type) {
     case MSG_REQ_REDIS_EVAL:
     case MSG_REQ_REDIS_EVALSHA:
+        return true;
+
+    default:
+        break;
+    }
+
+    return false;
+}
+
+/*
+ * BRPOP: one or more keys, followed by exactly one argument.
+ *
+ */
+static bool
+redis_argbrpop(struct msg *r)
+{
+    switch (r->type) {
+        case MSG_REQ_REDIS_BRPOP:
+            return true;
+
+        default:
+            break;
+    }
+
+    return false;
+}
+
+/*
+ * UNSUBSCRIBE: zero or more keys (variable keys).
+ */
+static bool
+redis_argvkeys(struct msg *r)
+{
+    switch (r->type) {
+    case MSG_REQ_REDIS_UNSUBSCRIBE:
+    case MSG_REQ_REDIS_PUNSUBSCRIBE:
+        return true;
+
+    default:
+        break;
+    }
+
+    return false;
+}
+
+/*
+ * MULTI-EXEC support
+ *
+ */
+static bool
+redis_argmulti(struct msg *r)
+{
+    switch (r->type) {
+    case MSG_REQ_REDIS_MULTI:
         return true;
 
     default:
@@ -685,6 +747,17 @@ redis_parse_req(struct msg *r)
                     break;
                 }
 
+
+                if (str4icmp(m, 'k', 'e', 'y', 's')) {
+                    r->type = MSG_REQ_REDIS_KEYS;
+                    break;
+                }
+
+                if (str4icmp(m, 'e', 'x', 'e', 'c')) {
+                    r->type = MSG_REQ_REDIS_EXEC;
+                    break;
+                }
+
                 break;
 
             case 5:
@@ -775,6 +848,24 @@ redis_parse_req(struct msg *r)
 
                 if (str5icmp(m, 'p', 'f', 'a', 'd', 'd')) {
                     r->type = MSG_REQ_REDIS_PFADD;
+                    break;
+                }
+
+                if (str5icmp(m, 'm', 'u', 'l', 't', 'i')) {
+                    r->type = MSG_REQ_REDIS_MULTI;
+                    r->is_transc = 1;
+                    break;
+                }
+
+                if (str5icmp(m, 'w', 'a', 't', 'c', 'h')) {
+                    r->type = MSG_REQ_REDIS_WATCH;
+                    r->noforward = 1;
+                    break;
+                }
+
+                if (str5icmp(m, 'b', 'r', 'p', 'o', 'p')) {
+                    r->type = MSG_REQ_REDIS_BRPOP;
+                    r->is_brpop = 1;
                     break;
                 }
 
@@ -944,6 +1035,23 @@ redis_parse_req(struct msg *r)
                     break;
                 }
 
+                if (str7icmp(m, 'u', 'n', 'w', 'a', 't', 'c', 'h')) {
+                    r->type = MSG_REQ_REDIS_UNWATCH;
+                    r->noforward = 1;
+                    break;
+                }
+
+                if (str7icmp(m, 'd', 'i', 's', 'c', 'a', 'r', 'd')) {
+                    r->type = MSG_REQ_REDIS_DISCARD;
+                    r->noforward = 1;
+                    break;
+                }
+
+                if (str7icmp(m, 'p', 'u', 'b', 'l', 'i', 's', 'h')) {
+                    r->type = MSG_REQ_REDIS_PUBLISH;
+                    break;
+                }
+
                 break;
 
             case 8:
@@ -1005,6 +1113,12 @@ redis_parse_req(struct msg *r)
                     break;
                 }
 
+                if (str9icmp(m, 's', 'u', 'b', 's', 'c', 'r', 'i', 'b', 'e')) {
+                    r->type = MSG_REQ_REDIS_SUBSCRIBE;
+                    r->is_pubsub = 1;
+                    break;
+                }
+
                 break;
 
             case 10:
@@ -1012,6 +1126,14 @@ redis_parse_req(struct msg *r)
                     r->type = MSG_REQ_REDIS_SDIFFSTORE;
                     break;
                 }
+
+                if (str10icmp(m, 'p', 's', 'u', 'b', 's', 'c', 'r', 'i', 'b', 'e')) {
+                    r->type = MSG_REQ_REDIS_PSUBSCRIBE;
+                    r->is_pubsub = 1;
+                    break;
+                }
+
+                break;
 
             case 11:
                 if (str11icmp(m, 'i', 'n', 'c', 'r', 'b', 'y', 'f', 'l', 'o', 'a', 't')) {
@@ -1061,6 +1183,12 @@ redis_parse_req(struct msg *r)
                     break;
                 }
 
+                if (str11icmp(m, 'u', 'n', 's', 'u', 'b', 's', 'c', 'r', 'i', 'b', 'e')) {
+                    r->type = MSG_REQ_REDIS_UNSUBSCRIBE;
+                    r->is_pubsub = 2;
+                    break;
+                }
+
                 break;
 
             case 12:
@@ -1069,6 +1197,11 @@ redis_parse_req(struct msg *r)
                     break;
                 }
 
+                if (str12icmp(m, 'p', 'u', 'n', 's', 'u', 'b', 's', 'c', 'r', 'i', 'b', 'e')) {
+                    r->type = MSG_REQ_REDIS_PUNSUBSCRIBE;
+                    r->is_pubsub = 2;
+                    break;
+                }
 
                 break;
 
@@ -1128,11 +1261,18 @@ redis_parse_req(struct msg *r)
             case LF:
                 if (redis_argz(r)) {
                     goto done;
+                } else if (redis_argmulti(r)) {
+                    goto done;   // Simply done to support multi-exec transaction
+                } else if (redis_argvkeys(r)) {
+                    if (r->rnarg == 0) {
+                        goto done;
+                    }
+                    state = SW_KEY_LEN;
                 } else if (r->narg == 1) {
                     goto error;
                 } else if (redis_argeval(r)) {
                     state = SW_ARG1_LEN;
-                } else {
+                }  else {
                     state = SW_KEY_LEN;
                 }
                 break;
@@ -1261,6 +1401,19 @@ redis_parse_req(struct msg *r)
                         goto done;
                     }
                     state = SW_ARGN_LEN;
+                } else if (redis_argbrpop(r)) {
+                    if (r->rnarg == 0) {
+                        goto error;
+                    } else if (r->rnarg == 1) {
+                        state = SW_ARG1_LEN;
+                    } else {
+                        state = SW_KEY_LEN;
+                    }
+                } else if (redis_argvkeys(r)) {
+                    if (r->rnarg == 0) {
+                        goto done;
+                    }
+                    state = SW_KEY_LEN;
                 } else {
                     goto error;
                 }
@@ -1320,6 +1473,14 @@ redis_parse_req(struct msg *r)
                 goto error;
             }
 
+            // a hack for brpop to calculate the timeout, right now we don't support infinite blocking 0.
+            if (r->is_brpop) {
+                r->brpop_timeout = 0;
+                for (; p < m; p++) {
+                    r->brpop_timeout = r->brpop_timeout * 10 + (uint32_t)((*p) - '0');
+                }
+            }             
+
             p = m; /* move forward by rlen bytes */
             r->rlen = 0;
 
@@ -1360,6 +1521,11 @@ redis_parse_req(struct msg *r)
                         goto done;
                     }
                     state = SW_KEY_LEN;
+                } else if (redis_argbrpop(r)) {
+                    if (r->rnarg != 0) {
+                        goto error;
+                    }
+                    goto done;
                 } else {
                     goto error;
                 }
@@ -1675,7 +1841,11 @@ redis_parse_req(struct msg *r)
 
 done:
     ASSERT(r->type > MSG_UNKNOWN && r->type < MSG_SENTINEL);
-    r->pos = p + 1;
+    if (r->type == MSG_REQ_REDIS_MULTI) {
+        r->pos = b->last;
+    } else {
+        r->pos = p + 1;
+    }
     ASSERT(r->pos <= b->last);
     r->state = SW_START;
     r->token = NULL;
@@ -1739,6 +1909,7 @@ redis_parse_rsp(struct msg *r)
     struct mbuf *b;
     uint8_t *p, *m;
     uint8_t ch;
+    uint32_t nth_args = 0;
 
     enum {
         SW_START,
@@ -1984,6 +2155,12 @@ redis_parse_rsp(struct msg *r)
         case SW_ALMOST_DONE:
             switch (ch) {
             case LF:
+                // For Multi-Exec transc, the response would be something like "+OK+QUEUED+QUEUED*2:0:10",
+                // so after parsing the first status "+OK" and if there are more chars, we assume it's
+                // multi-exec transc.
+                if (r->type == MSG_RSP_REDIS_STATUS && p + 1 < b->last) {
+                    r->type = MSG_RSP_REDIS_MULTICMD;
+                }
                 /* rsp_end <- p */
                 goto done;
 
@@ -2168,6 +2345,7 @@ redis_parse_rsp(struct msg *r)
                 }
                 r->rnarg--;
                 r->token = NULL;
+                nth_args++;
             } else {
                 goto error;
             }
@@ -2197,6 +2375,13 @@ redis_parse_rsp(struct msg *r)
 
             if (*m != CR) {
                 goto error;
+            }
+
+            // Special handling for 'pmessage' and 'message' which is the first key in response.
+            if ( nth_args == 1 &&
+                 (r->rlen == 8 && memcmp(p, "pmessage", 8) == 0) ||
+                 (r->rlen == 7 && memcmp(p, "message", 7) == 0) ) {
+                r->is_pmessage = 1;
             }
 
             p += r->rlen; /* move forward by rlen bytes */
@@ -2248,7 +2433,11 @@ redis_parse_rsp(struct msg *r)
 
 done:
     ASSERT(r->type > MSG_UNKNOWN && r->type < MSG_SENTINEL);
-    r->pos = p + 1;
+    if (r->type == MSG_RSP_REDIS_MULTICMD) {
+        r->pos = b->last;
+    } else {
+        r->pos = p + 1;
+    }
     ASSERT(r->pos <= b->last);
     r->state = SW_START;
     r->token = NULL;
@@ -2721,6 +2910,10 @@ redis_reply(struct msg *r)
     }
 
     switch (r->type) {
+    case MSG_REQ_REDIS_WATCH:
+    case MSG_REQ_REDIS_UNWATCH:
+    case MSG_REQ_REDIS_DISCARD:
+        return msg_append(response, rsp_ok.data, rsp_ok.len); // TODO(chaoqun): left for further support if needed
     case MSG_REQ_REDIS_PING:
         return msg_append(response, rsp_pong.data, rsp_pong.len);
     case MSG_REQ_REDIS_HCDGETPROXY:

@@ -190,7 +190,7 @@ struct conn *
 server_conn(struct server *server)
 {
     struct server_pool *pool;
-    struct conn *conn;
+    struct conn *conn, *first_conn = NULL;
 
     pool = server->owner;
 
@@ -209,11 +209,30 @@ server_conn(struct server *server)
      * Pick a server connection from the head of the queue and insert
      * it back into the tail of queue to maintain the lru order
      */
-    conn = TAILQ_FIRST(&server->s_conn_q);
-    ASSERT(!conn->client && !conn->proxy);
 
-    TAILQ_REMOVE(&server->s_conn_q, conn, conn_tqe);
-    TAILQ_INSERT_TAIL(&server->s_conn_q, conn, conn_tqe);
+    TAILQ_FOREACH(conn, &server->s_conn_q, conn_tqe) {
+        log_debug(LOG_VERB, "server_conn: conn=0x%08x, is_pubsub_conn=%d, is_brpop_conn=%d",
+                conn, conn->is_pubsub_conn, conn->is_brpop_conn); //chaoqun
+    }
+
+    conn = NULL;
+    do {
+        conn = TAILQ_FIRST(&server->s_conn_q);
+        ASSERT(!conn->client && !conn->proxy);
+
+        if (first_conn == NULL) {
+            first_conn = conn;
+        } else if (first_conn == conn) {
+            // we have loop through all the server connections,
+            // but all of them are in pubsub/brpop case, so no more
+            // connections available could be used.
+            conn = NULL;
+            break;
+        }
+        TAILQ_REMOVE(&server->s_conn_q, conn, conn_tqe);
+        TAILQ_INSERT_TAIL(&server->s_conn_q, conn, conn_tqe);
+
+    } while (conn->is_pubsub_conn || conn->is_brpop_conn);
 
     return conn;
 }
@@ -456,12 +475,13 @@ server_close(struct context *ctx, struct conn *conn)
 
     conn->unref(conn);
 
+    log_debug(LOG_VERB, "server_close: ctx=%u, conn=%u, sd=%u", ctx, conn, conn->sd); 
     status = close(conn->sd);
     if (status < 0) {
         log_error("close s %d failed, ignored: %s", conn->sd, strerror(errno));
     }
     conn->sd = -1;
-
+    
     conn_put(conn);
 }
 
@@ -735,7 +755,7 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     }
 
     if (nshards == 1 || keylen == 0) {
-        log_debug(LOG_NOTICE, "case 1: key %s => shard %d", (char*)key, 0);
+        log_debug(LOG_NOTICE, "case 1: key %.*s => shard %d", keylen, (char*)key, 0);
         return (struct shard*)array_get(&pool->shards, 0);;
     }
 
@@ -755,9 +775,9 @@ get_shard_from_key(struct server_pool *pool, uint8_t *key, uint32_t keylen)
     for (uint32_t i = 0; i < nshards; i++) {
         struct shard* sd = (struct shard*)array_get(&pool->shards, i);
         if (sd->range_begin <= hv && hv <= sd->range_end) {
-            log_debug(LOG_NOTICE, "shard-search: key %s, hv %d, "
+            log_debug(LOG_NOTICE, "shard-search: key %.*s, hv %d, "
                       "%d shards, map to shard %d (idx %d)",
-                      (char*)key, hv, nshards, i, sd->idx);
+                      keylen, (char*)key, hv, nshards, i, sd->idx);
             return sd;
         }
     }
